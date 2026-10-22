@@ -24,6 +24,10 @@ The root passes two `azurerm` providers, both with `resource_provider_registrati
 
 The default one also sets `subscription { prevent_cancellation_on_destroy = true }`. `github` writes the Environment `lz-<lz>` in `tl-cloud-infrastructure`.
 
+## Tests
+
+`tests/` runs offline with mock providers: `tofu init -backend=false`, then `tofu test`. The check on every PR runs them.
+
 ## Not built yet
 
 - `budget.notify_customer`: built with the first customer landing zone that sets it, together with the right to read `contacts-<code>`.

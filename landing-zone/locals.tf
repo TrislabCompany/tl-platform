@@ -7,7 +7,7 @@ locals {
 
   # <scope>-<envtype>-<region code>[-<nn>] (03 section 7.3). An experiment has
   # no envtype and counts as sandbox.
-  parts       = local.experiment ? null : regex("^(.+)-(prod|sandbox)-([a-z0-9]+)(?:-[0-9]{2})?$", local.name)
+  parts       = local.experiment ? null : regex("^(.+)-(prod|sandbox)-([a-z0-9]+)(?:-(?:0[2-9]|[1-9][0-9]))?$", local.name)
   scope       = local.experiment ? null : local.parts[0]
   envtype     = local.experiment ? "sandbox" : local.parts[1]
   region_code = local.experiment ? null : local.parts[2]

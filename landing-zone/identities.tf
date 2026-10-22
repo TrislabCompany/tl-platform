@@ -109,22 +109,24 @@ resource "azuread_application_federated_identity_credential" "this" {
 
 locals {
   # ADR 0024: the deploy identity may assign the stamp identity roles to
-  # service principals, and the data roles to the landing zone's data groups.
-  stamp_identity_roles = join(", ", [
+  # service principals, and the data roles to the landing zone's data groups,
+  # and delete an assignment of any of them.
+  stamp_identity_role_ids = [
     local.roles["Key Vault Secrets User"],
     data.azurerm_role_definition.stamp_app_deploy.role_definition_id,
     local.roles["Azure Service Bus Data Sender"],
     local.roles["Azure Service Bus Data Receiver"],
+    local.roles["Storage Blob Data Contributor"],
+  ]
+  data_role_ids = [
     local.roles["Azure Service Bus Data Owner"],
     local.roles["Storage Blob Data Reader"],
     local.roles["Storage Blob Data Contributor"],
-  ])
-  data_roles = join(", ", [
-    local.roles["Azure Service Bus Data Owner"],
-    local.roles["Storage Blob Data Reader"],
-    local.roles["Storage Blob Data Contributor"],
-  ])
-  data_group_ids = join(", ", [for g in data.azuread_group.data : g.object_id])
+  ]
+  stamp_identity_roles = join(", ", local.stamp_identity_role_ids)
+  data_roles           = join(", ", local.data_role_ids)
+  deletable_roles      = join(", ", distinct(concat(local.stamp_identity_role_ids, local.data_role_ids)))
+  data_group_ids       = join(", ", [for g in data.azuread_group.data : g.object_id])
 
   deploy_grant_condition = trimspace(<<-EOT
     (
@@ -151,7 +153,7 @@ locals {
      )
      OR
      (
-      @Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${local.stamp_identity_roles}}
+      @Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${local.deletable_roles}}
      )
     )
   EOT

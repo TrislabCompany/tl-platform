@@ -103,12 +103,10 @@ resource "azurerm_private_dns_zone_virtual_network_link" "this" {
 # ---- Step 5: Key Vault --------------------------------------------------------
 
 locals {
-  # sb only where sandbox would pass the limit of 24 (03 section 6).
-  key_vault_name = local.network ? (
-    length("kv-${local.scope}-${local.envtype}-0000") <= 24
-    ? "kv-${local.scope}-${local.envtype}-${random_integer.suffix[0].result}"
-    : "kv-${local.scope}-sb-${random_integer.suffix[0].result}"
-  ) : null
+  # sb replaces sandbox only where sandbox would pass the limit of 24. A prod
+  # name has no short form, so a scope too long for it fails (03 section 6).
+  key_vault_envtype = local.network && local.envtype == "sandbox" && length("kv-${local.scope}-sandbox-0000") > 24 ? "sb" : local.envtype
+  key_vault_name    = local.network ? "kv-${local.scope}-${local.key_vault_envtype}-${random_integer.suffix[0].result}" : null
 }
 
 resource "azurerm_key_vault" "this" {
@@ -123,6 +121,13 @@ resource "azurerm_key_vault" "this" {
   soft_delete_retention_days = 90
   purge_protection_enabled   = true
   tags                       = local.tags
+
+  lifecycle {
+    precondition {
+      condition     = length("kv-${local.scope}-${local.key_vault_envtype}-0000") <= 24
+      error_message = "The Key Vault name kv-${local.scope}-${local.key_vault_envtype}-<nnnn> is longer than 24 characters (03 section 6)."
+    }
+  }
 }
 
 # ---- Step 9: dedicated workspace ----------------------------------------------

@@ -1,14 +1,17 @@
 # Step 7 of 05-landing-zones.md section 4: the access entries, as direct role
 # assignments on the subscription while pim is false. In prod, grp-devops then
-# gets Reader, and its other roles go to grp-platform-admins (ADR 0053).
+# gets Reader, and its Contributor and Key Vault Secrets Officer go to
+# grp-platform-admins (ADR 0053).
 # Removed when the landing zone is decommissioned (section 7).
 
 locals {
+  admin_roles = ["Contributor", "Key Vault Secrets Officer"]
+
   access = local.active ? {
     for a in distinct(flatten([
       for a in var.lz.access : local.prod && a.group == "grp-devops" ? concat(
-        [{ group = "grp-devops", role = "Reader" }],
-        a.role == "Reader" ? [] : [{ group = "grp-platform-admins", role = a.role }],
+        [{ group = "grp-devops", role = contains(local.admin_roles, a.role) ? "Reader" : a.role }],
+        contains(local.admin_roles, a.role) ? [{ group = "grp-platform-admins", role = a.role }] : [],
       ) : [{ group = a.group, role = a.role }]
     ])) : "${a.group}/${a.role}" => a
   } : {}

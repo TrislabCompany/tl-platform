@@ -121,6 +121,14 @@ run "sandbox" {
     condition     = length(azurerm_private_dns_zone_virtual_network_link.this) == 1 && length(azurerm_management_lock.this) == 1
     error_message = "dns/lock"
   }
+  assert {
+    condition     = strcontains(data.azapi_resource_list.owners.response_export_values.ids, "properties.principalId == '${data.azurerm_client_config.platform.object_id}'")
+    error_message = "only the creator's Owner assignment is removed"
+  }
+  assert {
+    condition     = strcontains(local.data_roles, "090c5cfd-751d-490a-894a-3ce6f1109419") && strcontains(local.deletable_roles, "090c5cfd-751d-490a-894a-3ce6f1109419") && !strcontains(local.stamp_identity_roles, "090c5cfd-751d-490a-894a-3ce6f1109419") && !strcontains(local.stamp_identity_roles, "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1")
+    error_message = "service principals get only the stamp identity roles of ADR 0024"
+  }
 }
 
 run "prod_devops_mapping" {
@@ -130,11 +138,14 @@ run "prod_devops_mapping" {
       name    = "products-prod-neu", state = "active", cloud = "azure", archetype = "standard"
       owner   = { products = true }, subscription = "sub-products-prod-neu", region = "northeurope"
       network = { spoke_cidr = "10.16.0.0/20" }, budget = { monthly_eur = 100 }
-      access  = [{ group = "grp-devops", role = "Contributor", pim = true }, { group = "grp-devops", role = "Key Vault Secrets Officer", pim = true }]
+      access = [
+        { group = "grp-devops", role = "Contributor", pim = true }, { group = "grp-devops", role = "Key Vault Secrets Officer", pim = true },
+        { group = "grp-devops", role = "Key Vault Reader", pim = true }, { group = "grp-devops", role = "Reader", pim = true },
+      ]
     }
   }
   assert {
-    condition     = jsonencode(sort(keys(azurerm_role_assignment.access))) == jsonencode(["grp-devops/Reader", "grp-platform-admins/Contributor", "grp-platform-admins/Key Vault Secrets Officer"])
+    condition     = jsonencode(sort(keys(azurerm_role_assignment.access))) == jsonencode(["grp-devops/Key Vault Reader", "grp-devops/Reader", "grp-platform-admins/Contributor", "grp-platform-admins/Key Vault Secrets Officer"])
     error_message = jsonencode(keys(azurerm_role_assignment.access))
   }
 }
@@ -225,8 +236,128 @@ run "experiment_too_long" {
   variables {
     lz = {
       name  = "exp-test", state = "active", cloud = "azure", archetype = "experiment", ttl = "200d"
+      owner = { platform = true }, subscription = "sub-exp-test", budget = { monthly_eur = 50 }
+    }
+  }
+  expect_failures = [var.lz]
+}
+
+run "experiment_over_budget" {
+  command = plan
+  variables {
+    lz = {
+      name  = "exp-test", state = "active", cloud = "azure", archetype = "experiment", ttl = "30d"
       owner = { platform = true }, subscription = "sub-exp-test", budget = { monthly_eur = 500 }
     }
   }
   expect_failures = [var.lz]
+}
+
+run "production_data_in_sandbox" {
+  command = plan
+  variables {
+    lz = {
+      name    = "products-sandbox-neu", state = "active", cloud = "azure", archetype = "standard"
+      owner   = { products = true }, subscription = "sub-products-sandbox-neu", region = "northeurope"
+      network = { spoke_cidr = "10.32.0.0/20" }, budget = { monthly_eur = 100 }, production_data = false
+    }
+  }
+  expect_failures = [var.lz]
+}
+
+run "ttl_outside_experiment" {
+  command = plan
+  variables {
+    lz = {
+      name    = "products-sandbox-neu", state = "active", cloud = "azure", archetype = "standard", ttl = "30d"
+      owner   = { products = true }, subscription = "sub-products-sandbox-neu", region = "northeurope"
+      network = { spoke_cidr = "10.32.0.0/20" }, budget = { monthly_eur = 100 }
+    }
+  }
+  expect_failures = [var.lz]
+}
+
+run "owner_not_scope" {
+  command = plan
+  variables {
+    lz = {
+      name    = "products-sandbox-neu", state = "active", cloud = "azure", archetype = "standard"
+      owner   = { customer = "oc" }, subscription = "sub-products-sandbox-neu", region = "northeurope"
+      network = { spoke_cidr = "10.32.0.0/20" }, budget = { monthly_eur = 100 }
+    }
+  }
+  expect_failures = [var.lz]
+}
+
+run "regulated_not_built" {
+  command = plan
+  variables {
+    lz = {
+      name    = "products-prod-neu", state = "active", cloud = "azure", archetype = "regulated"
+      owner   = { products = true }, subscription = "sub-products-prod-neu", region = "northeurope"
+      network = { spoke_cidr = "10.16.0.0/20" }, budget = { monthly_eur = 100 }, observability = { dedicated_workspace = true }
+    }
+  }
+  expect_failures = [var.lz]
+}
+
+run "budget_not_whole" {
+  command = plan
+  variables {
+    lz = {
+      name    = "products-sandbox-neu", state = "active", cloud = "azure", archetype = "standard"
+      owner   = { products = true }, subscription = "sub-products-sandbox-neu", region = "northeurope"
+      network = { spoke_cidr = "10.32.0.0/20" }, budget = { monthly_eur = 99.5 }
+    }
+  }
+  expect_failures = [var.lz]
+}
+
+run "budget_zero" {
+  command = plan
+  variables {
+    lz = {
+      name    = "products-sandbox-neu", state = "active", cloud = "azure", archetype = "standard"
+      owner   = { products = true }, subscription = "sub-products-sandbox-neu", region = "northeurope"
+      network = { spoke_cidr = "10.32.0.0/20" }, budget = { monthly_eur = 0 }
+    }
+  }
+  expect_failures = [var.lz]
+}
+
+run "key_vault_sandbox_short_form" {
+  command = apply
+  variables {
+    catalog = {
+      owners        = [{ slug = "long-customer", kind = "customer", code = "abcdef", state = "active" }]
+      regions       = [{ name = "northeurope", cloud = "azure", code = "neu", state = "active" }]
+      landing_zones = [{ name = "cust-abcdef-sandbox-neu", cidr = "10.48.0.0/20" }]
+    }
+    lz = {
+      name    = "cust-abcdef-sandbox-neu", state = "active", cloud = "azure", archetype = "standard"
+      owner   = { customer = "abcdef" }, subscription = "sub-cust-abcdef-sandbox-neu", region = "northeurope"
+      network = { spoke_cidr = "10.48.0.0/20" }, budget = { monthly_eur = 100 }
+    }
+  }
+  assert {
+    condition     = startswith(azurerm_key_vault.this[0].name, "kv-cust-abcdef-sb-")
+    error_message = azurerm_key_vault.this[0].name
+  }
+}
+
+run "key_vault_prod_too_long" {
+  command = plan
+  variables {
+    catalog = {
+      owners        = [{ slug = "long-customer", kind = "customer", code = "abcdefghijkl", state = "active" }]
+      regions       = [{ name = "northeurope", cloud = "azure", code = "neu", state = "active" }]
+      landing_zones = [{ name = "cust-abcdefghijkl-prod-neu", cidr = "10.48.0.0/20" }]
+    }
+    lz = {
+      name    = "cust-abcdefghijkl-prod-neu", state = "active", cloud = "azure", archetype = "standard"
+      owner   = { customer = "abcdefghijkl" }, subscription = "sub-cust-abcdefghijkl-prod-neu", region = "northeurope"
+      network = { spoke_cidr = "10.48.0.0/20" }, budget = { monthly_eur = 100 }
+    }
+  }
+  expect_failures = [azurerm_key_vault.this]
 }

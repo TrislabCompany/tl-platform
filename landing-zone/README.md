@@ -31,4 +31,20 @@ The default one also sets `subscription { prevent_cancellation_on_destroy = true
 ## Not built yet
 
 - `budget.notify_customer`: built with the first customer landing zone that sets it, together with the right to read `contacts-<code>`.
-- The CMK key of a regulated landing zone: built with the first regulated landing zone.
+- The CMK key of a regulated landing zone: built with the first regulated landing zone. Until then `archetype: regulated` is rejected.
+
+## Changes
+
+- `v0.2.0`:
+  - **New checks.** `lz.yaml` is now rejected when:
+    - `production_data` is set (true or false) outside prod;
+    - `ttl` is set outside an experiment;
+    - the name's scope doesn't match `owner`;
+    - `archetype` is `regulated`;
+    - `budget.monthly_eur` isn't a whole number above 0;
+    - the name ends in `-01`.
+  - **Owner removal.** Only the creator's Owner assignment is removed, and provider registration waits for that removal.
+  - **Grant condition.** The deploy identity's grant condition gives service principals only the stamp identity roles of ADR 0024. It may delete assignments of both role lists.
+  - **Prod access.** In prod, only Contributor and Key Vault Secrets Officer of `grp-devops` move to `grp-platform-admins`.
+  - **Key Vault name.** `sb` shortens only `sandbox` in the Key Vault name. A name that is still too long fails.
+- `v0.1.0`: first release, Azure half.

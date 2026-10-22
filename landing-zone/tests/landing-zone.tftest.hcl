@@ -19,20 +19,10 @@ mock_provider "azurerm" {
   }
 }
 
-mock_provider "azurerm" {
-  alias = "lz"
-  mock_resource "azurerm_resource_group" {
-    defaults = { id = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg" }
-  }
-  mock_resource "azurerm_key_vault" {
-    defaults = { id = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-x-security/providers/Microsoft.KeyVault/vaults/kv" }
-  }
-  mock_resource "azurerm_virtual_network" {
+mock_provider "azapi" {
+  mock_resource "azapi_resource" {
     defaults = { id = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/v" }
   }
-}
-
-mock_provider "azapi" {
   mock_data "azapi_resource_list" {
     defaults = { output = { ids = ["/subscriptions/2/providers/Microsoft.Authorization/roleAssignments/00000000-0000-0000-0000-000000000001"] } }
   }
@@ -52,11 +42,7 @@ mock_provider "azuread" {
 
 mock_provider "random" {}
 mock_provider "time" {}
-mock_provider "github" {
-  mock_data "github_team" {
-    defaults = { id = "123" }
-  }
-}
+mock_provider "github" {}
 
 variables {
   catalog = {
@@ -70,6 +56,7 @@ variables {
   az_billing_account          = "ba"
   az_billing_profile          = "bp"
   az_platform_invoice_section = "FLNE-ZNPI-PJA-PGB"
+  devops_team_id              = "789"
   edge_reader_ids             = ["44444444-4444-4444-4444-444444444444", "55555555-5555-5555-5555-555555555555"]
   lz = {
     name    = "products-sandbox-neu", state = "active", cloud = "azure", archetype = "standard"
@@ -98,8 +85,8 @@ run "sandbox" {
     error_message = "access"
   }
   assert {
-    condition     = startswith(azurerm_key_vault.this[0].name, "kv-products-sandbox-")
-    error_message = azurerm_key_vault.this[0].name
+    condition     = startswith(azapi_resource.key_vault[0].name, "kv-products-sandbox-")
+    error_message = azapi_resource.key_vault[0].name
   }
   assert {
     condition     = local.tags == { Product = "platform", Customer = "trislab", EnvironmentType = "sandbox", EnvironmentName = "sandbox" }
@@ -161,7 +148,7 @@ run "decommissioned" {
     }
   }
   assert {
-    condition     = length(azurerm_virtual_network_peering.hub_to_spoke) == 0 && length(azuread_application.this) == 0 && length(github_repository_environment.this) == 0 && length(azurerm_role_assignment.access) == 0 && length(azurerm_virtual_network.this) == 1 && length(azapi_resource_action.cancel) == 0
+    condition     = length(azurerm_virtual_network_peering.hub_to_spoke) == 0 && length(azuread_application.this) == 0 && length(github_repository_environment.this) == 0 && length(azurerm_role_assignment.access) == 0 && length(azapi_resource.spoke) == 1 && length(azapi_resource_action.cancel) == 0
     error_message = "decommissioned"
   }
   assert {
@@ -180,7 +167,7 @@ run "experiment" {
     }
   }
   assert {
-    condition     = length(azurerm_resource_group.this) == 0 && length(azurerm_key_vault.this) == 0 && length(azuread_application.this) == 0 && length(azapi_resource_action.invoice_section) == 0
+    condition     = length(azapi_resource.resource_group) == 0 && length(azapi_resource.key_vault) == 0 && length(azuread_application.this) == 0 && length(azapi_resource_action.invoice_section) == 0
     error_message = "experiment"
   }
   assert {
@@ -340,8 +327,8 @@ run "key_vault_sandbox_short_form" {
     }
   }
   assert {
-    condition     = startswith(azurerm_key_vault.this[0].name, "kv-cust-abcdef-sb-")
-    error_message = azurerm_key_vault.this[0].name
+    condition     = startswith(azapi_resource.key_vault[0].name, "kv-cust-abcdef-sb-")
+    error_message = azapi_resource.key_vault[0].name
   }
 }
 
@@ -359,5 +346,5 @@ run "key_vault_prod_too_long" {
       network = { spoke_cidr = "10.48.0.0/20" }, budget = { monthly_eur = 100 }
     }
   }
-  expect_failures = [azurerm_key_vault.this]
+  expect_failures = [azapi_resource.key_vault]
 }

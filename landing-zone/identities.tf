@@ -40,11 +40,6 @@ locals {
 
 # ---- GitHub Environment -------------------------------------------------------
 
-data "github_team" "devops" {
-  count = local.connected ? 1 : 0
-  slug  = "devops"
-}
-
 resource "github_repository_environment" "this" {
   count               = local.connected ? 1 : 0
   repository          = "tl-cloud-infrastructure"
@@ -52,7 +47,7 @@ resource "github_repository_environment" "this" {
   prevent_self_review = true
 
   reviewers {
-    teams = [tonumber(data.github_team.devops[0].id)]
+    teams = [tonumber(var.devops_team_id)]
   }
 }
 
@@ -190,7 +185,7 @@ locals {
       identity = "plan", scope = local.subscription_scope, role = local.roles["Reader"], condition = null
     }
     plan-key-vault = {
-      identity = "plan", scope = azurerm_key_vault.this[0].id, role = local.roles["Key Vault Reader"], condition = null
+      identity = "plan", scope = azapi_resource.key_vault[0].id, role = local.roles["Key Vault Reader"], condition = null
     }
     plan-state = {
       identity = "plan", scope = local.tfstate_stamps, role = local.roles["Storage Blob Data Reader"], condition = local.state_path_condition["plan"]
@@ -202,7 +197,7 @@ locals {
       identity = "deploy", scope = local.subscription_scope, role = local.roles["Role Based Access Control Administrator"], condition = local.deploy_grant_condition
     }
     deploy-key-vault = {
-      identity = "deploy", scope = azurerm_key_vault.this[0].id, role = local.roles["Key Vault Secrets Officer"], condition = null
+      identity = "deploy", scope = azapi_resource.key_vault[0].id, role = local.roles["Key Vault Secrets Officer"], condition = null
     }
     deploy-state = {
       identity = "deploy", scope = local.tfstate_stamps, role = local.roles["Storage Blob Data Contributor"], condition = local.state_path_condition["deploy"]

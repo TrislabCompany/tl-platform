@@ -232,6 +232,16 @@ variable "github_repository_id" {
   }
 }
 
+variable "devops_team_id" {
+  description = "The numeric ID of the GitHub team devops, the reviewers of lz-<lz> (ADR 0031). Passed in, because the GitHub Apps have no organization permission to read teams (ADR 0019)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]*$", var.devops_team_id))
+    error_message = "devops_team_id must be a number."
+  }
+}
+
 variable "az_billing_account" {
   description = "The billing account name, AZ_BILLING_ACCOUNT (ADR 0011)."
   type        = string

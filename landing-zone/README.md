@@ -13,16 +13,12 @@ Builds one application landing zone from its `landing-zones/<lz>.yaml`, as speci
 | `az_billing_account`, `az_billing_profile` | `AZ_BILLING_ACCOUNT`, `AZ_BILLING_PROFILE` |
 | `az_platform_invoice_section` | The ID of `is-platform`, for experiments |
 | `edge_reader_ids` | The object IDs of `spn-global-plan` and `spn-global-apply` |
+| `devops_team_id` | The numeric ID of the GitHub team `devops`, the reviewers of `lz-<lz>` |
 | `pim` | `false` until Entra ID P2 is bought |
 
 ## Providers
 
-The root passes two `azurerm` providers, both with `resource_provider_registrations = "none"`:
-
-- the default one, signed in to `sub-platform`, for the subscription, the hub half of the peering, the DNS links and everything addressed by its full ID;
-- `azurerm.lz`, with `subscription_id = module.<name>.subscription_id`, for what goes into the landing zone's resource groups.
-
-The default one also sets `subscription { prevent_cancellation_on_destroy = true }`. `github` writes the Environment `lz-<lz>` in `tl-cloud-infrastructure`.
+The root passes one `azurerm` provider, signed in to `sub-platform`, with `resource_provider_registrations = "none"` and `subscription { prevent_cancellation_on_destroy = true }`. It creates the subscription, the hub half of the peering, the DNS links, and everything addressed by a scope: locks, role assignments and the budget. What goes into the landing zone's resource groups is created with `azapi`, by its parent's full ID, because a provider for the new subscription would need its ID at plan. `github` writes the Environment `lz-<lz>` in `tl-cloud-infrastructure`.
 
 ## Tests
 
@@ -35,6 +31,11 @@ The default one also sets `subscription { prevent_cancellation_on_destroy = true
 
 ## Changes
 
+- `v0.3.0`:
+  - **One plan, one apply.** The resource groups, Network Watcher, spoke, spoke half of the peering, Key Vault and workspace are created with `azapi`. The root no longer passes `azurerm.lz`, whose subscription ID was unknown at the first plan.
+  - **Spoke.** The spoke is never updated in place, so a change can't remove the stamps' subnets.
+  - **Key Vault.** The public endpoint and its network rule (allow, Azure services bypass) are set explicitly.
+  - **Reviewers.** `devops_team_id` replaces the lookup of the team, which the GitHub Apps can't read.
 - `v0.2.0`:
   - **New checks.** `lz.yaml` is now rejected when:
     - `production_data` is set (true or false) outside prod;

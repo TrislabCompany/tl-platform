@@ -1,0 +1,58 @@
+name: Check
+
+# Checks every module on a PR, offline: tofu fmt, then init, validate and, where
+# a tests/ folder exists, tofu test with mock providers, in each folder with a
+# versions.tf; then actionlint on the workflows. Nothing signs in anywhere.
+#
+# The job `check` is the required check on main (step A0 of roadmap phase 4 in
+# tl-cloud-infrastructure).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  ACTIONLINT_VERSION: 1.7.12
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - name: tofu fmt
+        run: tofu fmt -check -diff -recursive -no-color
+
+      - name: tofu validate and test
+        run: |
+          find . -path ./.git -prune -o -name versions.tf -print | xargs -r -n1 dirname | sort | while read -r dir; do
+            echo "::group::$dir"
+            tofu -chdir="$dir" init -backend=false -input=false -no-color
+            tofu -chdir="$dir" validate -no-color
+            if [ -d "$dir/tests" ]; then
+              tofu -chdir="$dir" test -no-color
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Lint the workflows
+        run: |
+          bash .github/scripts/install-tool.sh actionlint "$ACTIONLINT_VERSION"
+          actionlint -no-color

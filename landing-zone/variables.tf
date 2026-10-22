@@ -28,7 +28,7 @@ variable "lz" {
     observability = optional(object({
       dedicated_workspace = optional(bool, false)
     }))
-    production_data   = optional(bool, false)
+    production_data   = optional(bool)
     decommissioned_on = optional(string)
     hold_days         = optional(number)
     ttl               = optional(string)
@@ -104,9 +104,37 @@ variable "lz" {
     error_message = "A regulated landing zone needs observability.dedicated_workspace: true (05-landing-zones.md section 2)."
   }
 
+  # Set at all, true or false, only in prod, as policy/catalog.rego checks.
   validation {
-    condition     = !var.lz.production_data || can(regex("-prod-", var.lz.name))
+    condition     = var.lz.production_data == null || can(regex("-prod-", var.lz.name))
     error_message = "production_data is set only in a prod landing zone (05-landing-zones.md section 2)."
+  }
+
+  validation {
+    condition     = var.lz.ttl == null || var.lz.archetype == "experiment"
+    error_message = "ttl is set only on an experiment (05-landing-zones.md section 2)."
+  }
+
+  # <scope> is products, cust-<code> or prdt-<code> (03 section 7.3).
+  validation {
+    condition = var.lz.archetype == "experiment" || try(regex("^(.+)-(?:prod|sandbox)-", var.lz.name)[0], "") == (
+      var.lz.owner.products ? "products" :
+      var.lz.owner.customer != null ? "cust-${var.lz.owner.customer}" :
+      var.lz.owner.product != null ? "prdt-${var.lz.owner.product}" : "-"
+    )
+    error_message = "The name's scope must match owner: products for { products: true }, cust-<code> for a customer, prdt-<code> for a product (03 section 7.3)."
+  }
+
+  # Deferred until the first regulated landing zone: its customer-managed key
+  # isn't built yet (05-landing-zones.md section 4, step 5).
+  validation {
+    condition     = var.lz.archetype != "regulated"
+    error_message = "archetype regulated is built with the first regulated landing zone, with its customer-managed key."
+  }
+
+  validation {
+    condition     = var.lz.budget.monthly_eur > 0 && floor(var.lz.budget.monthly_eur) == var.lz.budget.monthly_eur
+    error_message = "budget.monthly_eur must be a whole number of euros above 0 (05-landing-zones.md section 2)."
   }
 
   validation {
@@ -161,7 +189,7 @@ variable "catalog" {
 
   validation {
     condition = var.lz.archetype == "experiment" || anytrue([
-      for r in var.catalog.regions : r.cloud == "azure" && r.state == "active" && r.name == var.lz.region && r.code == try(regex("^.+-(?:prod|sandbox)-([a-z0-9]+)(?:-[0-9]{2})?$", var.lz.name)[0], "")
+      for r in var.catalog.regions : r.cloud == "azure" && r.state == "active" && r.name == var.lz.region && r.code == try(regex("^.+-(?:prod|sandbox)-([a-z0-9]+)(?:-(?:0[2-9]|[1-9][0-9]))?$", var.lz.name)[0], "")
     ])
     error_message = "region must be the active entry in catalog/regions.yaml whose code is the region code in name (05-landing-zones.md section 3)."
   }

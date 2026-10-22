@@ -55,8 +55,8 @@ resource "azapi_resource_action" "management_group" {
 }
 
 # Azure may make the identity that creates a subscription its Owner. That
-# assignment is removed, so spn-landingzones-apply keeps only the rights it
-# inherits from the management groups (05 section 4, step 2). The list is read
+# assignment, and only that one, is removed, so spn-landingzones-apply keeps
+# only the rights it inherits from the management groups (05 section 4, step 2). The list is read
 # at apply on the first run, because the subscription doesn't exist at plan.
 data "azapi_resource_list" "owners" {
   type      = "Microsoft.Authorization/roleAssignments@2022-04-01"
@@ -65,7 +65,7 @@ data "azapi_resource_list" "owners" {
     "$filter" = ["atScope()"]
   }
   response_export_values = {
-    ids = "value[?properties.scope == '${local.subscription_scope}' && ends_with(properties.roleDefinitionId, '/${local.roles["Owner"]}')].id"
+    ids = "value[?properties.scope == '${local.subscription_scope}' && properties.principalId == '${data.azurerm_client_config.platform.object_id}' && ends_with(properties.roleDefinitionId, '/${local.roles["Owner"]}')].id"
   }
 
   depends_on = [azapi_resource_action.management_group]
@@ -93,7 +93,7 @@ resource "azapi_resource_action" "register" {
   action      = "register"
   method      = "POST"
 
-  depends_on = [azapi_resource_action.management_group]
+  depends_on = [azapi_resource_action.remove_creator_owner]
 }
 
 # Runs only on the first apply. If a provider takes longer, the first resource

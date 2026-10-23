@@ -104,10 +104,23 @@ resource "time_sleep" "wait_for_providers" {
   depends_on = [azapi_resource_action.register]
 }
 
-# Section 7: cancelled. Billing profile contributor may cancel a subscription
-# billed to its profile, also in mg-decommissioned (ADR 0011).
+# Section 7: cancelled. A cancelled subscription is read-only, so its resource
+# groups are deleted first. OpenTofu can't order the cancel after the deletes of
+# the same apply, so the groups are listed at plan, and the cancel comes with
+# the next apply once none is left (05 section 6).
+data "azapi_resource_list" "groups" {
+  count     = local.cancelled ? 1 : 0
+  type      = "Microsoft.Resources/resourceGroups@2024-03-01"
+  parent_id = local.subscription_scope
+  response_export_values = {
+    names = "value[?starts_with(name, 'rg-${local.name}-')].name"
+  }
+}
+
+# Billing profile contributor may cancel a subscription billed to its profile,
+# also in mg-decommissioned (ADR 0011).
 resource "azapi_resource_action" "cancel" {
-  count       = var.lz.state == "cancelled" ? 1 : 0
+  count       = local.cancelled && try(length(data.azapi_resource_list.groups[0].output.names), 0) == 0 ? 1 : 0
   type        = "Microsoft.Billing/billingAccounts/billingSubscriptions@2024-04-01"
   resource_id = "/providers/Microsoft.Billing/billingAccounts/${var.az_billing_account}/billingSubscriptions/${local.subscription_id}"
   action      = "cancel"

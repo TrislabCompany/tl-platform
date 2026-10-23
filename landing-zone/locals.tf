@@ -13,10 +13,12 @@ locals {
   region_code = local.experiment ? null : local.parts[2]
   prod        = local.envtype == "prod"
 
-  # Steps 3 to 5, 8 and 9 exist only outside experiments (05 section 4.1). The
-  # hub peering, the DNS links, the pipeline identities, the Environment and
-  # the access grants only while active (05 section 7).
-  network   = !local.experiment
+  # Steps 3 to 5, 8 and 9 exist only outside experiments (05 section 4.1), and
+  # are deleted once cancelled. The hub peering, the DNS links, the pipeline
+  # identities, the Environment and the access grants only while active
+  # (05 section 7).
+  cancelled = var.lz.state == "cancelled"
+  network   = !local.experiment && !local.cancelled
   connected = local.network && local.active
 
   customer = var.lz.owner.customer == null ? null : one([

@@ -1,7 +1,7 @@
 # Steps 2 to 5 and 9 of 05-landing-zones.md section 4: the landing zone's
 # resource groups and what goes in them (ADR 0022). An experiment has none of
-# them (section 4.1). They stay when the landing zone is decommissioned
-# (section 7).
+# them (section 4.1). They stay when the landing zone is decommissioned, and
+# are deleted when it is cancelled, before the cancel (section 7).
 #
 # What goes into the subscription is written with azapi, addressed by its
 # parent's full ID. An azurerm provider for the subscription would need its ID
@@ -23,12 +23,16 @@ resource "azapi_resource" "resource_group" {
   depends_on = [time_sleep.wait_for_providers]
 }
 
-# Every group but the network group, whose spoke the stamps change.
+# Every group but the network group, whose spoke the stamps change. A lock
+# blocks deleting what is in its group, so it depends on the Key Vault and the
+# workspace: it is created after them and deleted before them.
 resource "azurerm_management_lock" "this" {
   for_each   = setsubtract(local.groups, ["network"])
   name       = "lock-${azapi_resource.resource_group[each.key].name}"
   scope      = azapi_resource.resource_group[each.key].id
   lock_level = "CanNotDelete"
+
+  depends_on = [azapi_resource.key_vault, azapi_resource.workspace]
 }
 
 resource "azapi_resource" "network_watcher" {

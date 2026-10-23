@@ -31,6 +31,9 @@ The root passes one `azurerm` provider, signed in to `sub-platform`, with `resou
 
 ## Changes
 
+- `v0.4.0`:
+  - **Cancel deletes first.** Once `cancelled`, the resource groups are deleted with everything in them: each lock first, then the Network Watcher, spoke, Key Vault and workspace. The budget stays. A cancelled subscription is read-only, so the cancel comes with the next apply, once the list of the subscription's resource groups, read at plan, holds no `rg-<lz>-*` group. An experiment has none, so it is cancelled by one apply.
+  - **Locks.** Each lock depends on the Key Vault and the workspace, so it is deleted before them.
 - `v0.3.0`:
   - **One plan, one apply.** The resource groups, Network Watcher, spoke, spoke half of the peering, Key Vault and workspace are created with `azapi`. The root no longer passes `azurerm.lz`, whose subscription ID was unknown at the first plan.
   - **Spoke.** The spoke is never updated in place, so a change can't remove the stamps' subnets.

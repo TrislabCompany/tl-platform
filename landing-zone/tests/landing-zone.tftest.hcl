@@ -148,12 +148,66 @@ run "decommissioned" {
     }
   }
   assert {
-    condition     = length(azurerm_virtual_network_peering.hub_to_spoke) == 0 && length(azuread_application.this) == 0 && length(github_repository_environment.this) == 0 && length(azurerm_role_assignment.access) == 0 && length(azapi_resource.spoke) == 1 && length(azapi_resource_action.cancel) == 0
+    condition     = length(azurerm_virtual_network_peering.hub_to_spoke) == 0 && length(azuread_application.this) == 0 && length(github_repository_environment.this) == 0 && length(azurerm_role_assignment.access) == 0 && length(azapi_resource.spoke) == 1 && length(azurerm_management_lock.this) == 1 && length(data.azapi_resource_list.groups) == 0 && length(azapi_resource_action.cancel) == 0
     error_message = "decommissioned"
   }
   assert {
     condition     = strcontains(azapi_resource_action.management_group.resource_id, "/mg-decommissioned/")
     error_message = "mg"
+  }
+}
+
+run "cancelled_with_groups" {
+  command = apply
+  variables {
+    lz = {
+      name    = "products-sandbox-neu", state = "cancelled", decommissioned_on = "2026-11-01", cloud = "azure", archetype = "standard"
+      owner   = { products = true }, subscription = "sub-products-sandbox-neu", region = "northeurope"
+      network = { spoke_cidr = "10.32.0.0/20" }, budget = { monthly_eur = 100 }
+    }
+  }
+  override_data {
+    target = data.azapi_resource_list.groups
+    values = { output = { names = ["rg-products-sandbox-neu-network"] } }
+  }
+  assert {
+    condition     = length(azapi_resource.resource_group) == 0 && length(azurerm_management_lock.this) == 0 && length(azapi_resource.network_watcher) == 0 && length(azapi_resource.spoke) == 0 && length(azapi_resource.key_vault) == 0 && length(azapi_resource.workspace) == 0 && length(random_integer.suffix) == 0
+    error_message = "the resource groups and what is in them are deleted"
+  }
+  assert {
+    condition     = length(azapi_resource_action.cancel) == 0
+    error_message = "no cancel while a resource group is listed"
+  }
+  assert {
+    condition     = length(azuread_application.this) == 0 && length(azurerm_role_assignment.access) == 0 && strcontains(azapi_resource_action.management_group.resource_id, "/mg-decommissioned/")
+    error_message = "decommissioned"
+  }
+  assert {
+    condition     = azurerm_consumption_budget_subscription.this.name == "budget-products-sandbox-neu"
+    error_message = "the budget stays"
+  }
+}
+
+run "cancelled_without_groups" {
+  command = apply
+  variables {
+    lz = {
+      name    = "products-sandbox-neu", state = "cancelled", decommissioned_on = "2026-11-01", cloud = "azure", archetype = "standard"
+      owner   = { products = true }, subscription = "sub-products-sandbox-neu", region = "northeurope"
+      network = { spoke_cidr = "10.32.0.0/20" }, budget = { monthly_eur = 100 }
+    }
+  }
+  override_data {
+    target = data.azapi_resource_list.groups
+    values = { output = { names = [] } }
+  }
+  assert {
+    condition     = azapi_resource_action.cancel[0].resource_id == "/providers/Microsoft.Billing/billingAccounts/ba/billingSubscriptions/22222222-2222-2222-2222-222222222222"
+    error_message = "cancel once no resource group is left"
+  }
+  assert {
+    condition     = data.azapi_resource_list.groups[0].response_export_values.names == "value[?starts_with(name, 'rg-products-sandbox-neu-')].name"
+    error_message = "only the landing zone's groups hold the cancel"
   }
 }
 

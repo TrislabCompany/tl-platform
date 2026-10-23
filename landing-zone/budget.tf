@@ -1,5 +1,5 @@
 # Step 6 of 05-landing-zones.md section 4. It stays when the landing zone is
-# decommissioned (section 7).
+# decommissioned or cancelled, and goes with the subscription (section 7).
 
 resource "azurerm_consumption_budget_subscription" "this" {
   name            = "budget-${local.name}"

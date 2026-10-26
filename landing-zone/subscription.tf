@@ -36,13 +36,43 @@ resource "azapi_resource_action" "invoice_section" {
   }
 }
 
-# Step 2. Destroying it never cancels the subscription: the root sets the
-# provider feature prevent_cancellation_on_destroy (ADR 0011).
-resource "azurerm_subscription" "this" {
-  alias             = var.lz.subscription
-  subscription_name = var.lz.subscription
-  billing_scope_id  = local.experiment ? "${local.billing_profile}/invoiceSections/${var.az_platform_invoice_section}" : azapi_resource_action.invoice_section[0].resource_id
-  tags              = local.tags
+# Step 2. A PUT of the alias creates the subscription, or returns it if it
+# exists. An action is never read back at plan: reading an alias needs
+# Microsoft.Subscription/aliases/write, which spn-landingzones-plan doesn't
+# have. Destroying it never cancels the subscription (ADR 0011).
+resource "azapi_resource_action" "subscription" {
+  type        = "Microsoft.Subscription/aliases@2021-10-01"
+  resource_id = "/providers/Microsoft.Subscription/aliases/${var.lz.subscription}"
+  method      = "PUT"
+  body = {
+    properties = {
+      displayName  = var.lz.subscription
+      billingScope = local.experiment ? "${local.billing_profile}/invoiceSections/${var.az_platform_invoice_section}" : azapi_resource_action.invoice_section[0].resource_id
+      workload     = "Production"
+      additionalProperties = {
+        tags = local.tags
+      }
+    }
+  }
+  response_export_values = {
+    subscription_id = "properties.subscriptionId"
+  }
+}
+
+# v0.5.0 and earlier created it with azurerm_subscription. Only the state entry
+# goes; the PUT above adopts the alias.
+removed {
+  from = azurerm_subscription.this
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+# The subscription's ID at plan, once it exists, so nothing keyed on it is
+# planned as replaced. Reader on the management groups is enough to list it.
+data "azurerm_subscriptions" "this" {
+  display_name_contains = var.lz.subscription
 }
 
 # A PUT moves the subscription straight from one management group to another.

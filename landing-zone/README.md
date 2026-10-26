@@ -19,7 +19,7 @@ Builds one application landing zone from its `landing-zones/<lz>.yaml`, as speci
 
 ## Providers
 
-The root passes one `azurerm` provider, signed in to `sub-platform`, with `resource_provider_registrations = "none"` and `subscription { prevent_cancellation_on_destroy = true }`. It creates the subscription, the hub half of the peering, the DNS links, and everything addressed by a scope: locks, role assignments and the budget. What goes into the landing zone's resource groups is created with `azapi`, by its parent's full ID, because a provider for the new subscription would need its ID at plan. `github` writes the Environment `lz-<lz>` in `tl-cloud-infrastructure`.
+The root passes one `azurerm` provider, signed in to `sub-platform`, with `resource_provider_registrations = "none"` and `subscription { prevent_cancellation_on_destroy = true }`. It creates the hub half of the peering, the DNS links, and everything addressed by a scope: locks, role assignments and the budget. The subscription is created by a PUT of its alias with `azapi`, because `spn-landingzones-plan` can't read an alias. What goes into the landing zone's resource groups is created with `azapi`, by its parent's full ID, because a provider for the new subscription would need its ID at plan. `github` writes the Environment `lz-<lz>` in `tl-cloud-infrastructure`.
 
 ## Tests
 
@@ -32,6 +32,8 @@ The root passes one `azurerm` provider, signed in to `sub-platform`, with `resou
 
 ## Changes
 
+- `v0.6.0`:
+  - **Subscription by alias PUT.** The subscription is created by `azapi_resource_action` instead of `azurerm_subscription`. Reading an alias needs `Microsoft.Subscription/aliases/write`, so the plan of an existing landing zone failed. A `removed` block drops `azurerm_subscription` from the state without cancelling anything; the next apply's PUT adopts the alias. At plan, the subscription's ID comes from the list of subscriptions, so nothing keyed on it is planned as replaced.
 - `v0.5.0`:
   - **Identity owners.** `spn-landingzones-apply` is the owner of `spn-lz-<lz>-plan` and `-deploy`, app registration and service principal. With `Application.ReadWrite.OwnedBy` it couldn't add their service principals or federated credentials without it. New input `landingzones_apply_id`.
 - `v0.4.0`:

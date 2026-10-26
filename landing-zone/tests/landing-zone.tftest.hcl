@@ -58,6 +58,7 @@ variables {
   az_platform_invoice_section = "FLNE-ZNPI-PJA-PGB"
   devops_team_id              = "789"
   edge_reader_ids             = ["44444444-4444-4444-4444-444444444444", "55555555-5555-5555-5555-555555555555"]
+  landingzones_apply_id       = "66666666-6666-6666-6666-666666666666"
   lz = {
     name    = "products-sandbox-neu", state = "active", cloud = "azure", archetype = "standard"
     owner   = { products = true }, subscription = "sub-products-sandbox-neu", region = "northeurope"
@@ -95,6 +96,10 @@ run "sandbox" {
   assert {
     condition     = length(azurerm_role_assignment.identity) == 7 && length(azurerm_role_assignment.edge) == 2 && length(github_actions_environment_variable.this) == 5
     error_message = "identities"
+  }
+  assert {
+    condition     = alltrue([for k in ["plan", "deploy"] : azuread_application.this[k].owners == toset(["66666666-6666-6666-6666-666666666666"]) && azuread_service_principal.this[k].owners == toset(["66666666-6666-6666-6666-666666666666"])])
+    error_message = "spn-landingzones-apply owns the identities"
   }
   assert {
     condition     = azuread_application_federated_identity_credential.this["deploy/lz-products-sandbox-neu"].subject == "repo:TrislabCompany@123/tl-cloud-infrastructure@456:environment:lz-products-sandbox-neu:job_workflow_ref:TrislabCompany/tl-cloud-infrastructure/.github/workflows/shared-apply.yml@refs/heads/main"

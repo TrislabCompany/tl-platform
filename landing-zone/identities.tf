@@ -77,14 +77,19 @@ resource "github_actions_environment_variable" "this" {
 
 # ---- Pipeline identities ------------------------------------------------------
 
+# Owned by spn-landingzones-apply: Application.ReadWrite.OwnedBy lets it add a
+# service principal and credentials, update and delete only what it owns, and
+# doesn't make it the owner of what it creates (ADR 0034).
 resource "azuread_application" "this" {
   for_each     = local.identities
   display_name = "spn-lz-${local.name}-${each.key}"
+  owners       = [var.landingzones_apply_id]
 }
 
 resource "azuread_service_principal" "this" {
   for_each  = local.identities
   client_id = azuread_application.this[each.key].client_id
+  owners    = [var.landingzones_apply_id]
 }
 
 # After the Environment, so the deploy identity never trusts an Environment

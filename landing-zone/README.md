@@ -13,6 +13,7 @@ Builds one application landing zone from its `landing-zones/<lz>.yaml`, as speci
 | `az_billing_account`, `az_billing_profile` | `AZ_BILLING_ACCOUNT`, `AZ_BILLING_PROFILE` |
 | `az_platform_invoice_section` | The ID of `is-platform`, for experiments |
 | `edge_reader_ids` | The object IDs of `spn-global-plan` and `spn-global-apply` |
+| `landingzones_apply_id` | The object ID of `spn-landingzones-apply`, the owner of the landing zone's identities |
 | `devops_team_id` | The numeric ID of the GitHub team `devops`, the reviewers of `lz-<lz>` |
 | `pim` | `false` until Entra ID P2 is bought |
 
@@ -31,6 +32,8 @@ The root passes one `azurerm` provider, signed in to `sub-platform`, with `resou
 
 ## Changes
 
+- `v0.5.0`:
+  - **Identity owners.** `spn-landingzones-apply` is the owner of `spn-lz-<lz>-plan` and `-deploy`, app registration and service principal. With `Application.ReadWrite.OwnedBy` it couldn't add their service principals or federated credentials without it. New input `landingzones_apply_id`.
 - `v0.4.0`:
   - **Cancel deletes first.** Once `cancelled`, the resource groups are deleted with everything in them: each lock first, then the Network Watcher, spoke, Key Vault and workspace. The budget stays. A cancelled subscription is read-only, so the cancel comes with the next apply, once the list of the subscription's resource groups, read at plan, holds no `rg-<lz>-*` group. An experiment has none, so it is cancelled by one apply.
   - **Locks.** Each lock depends on the Key Vault and the workspace, so it is deleted before them.

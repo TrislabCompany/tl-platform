@@ -282,6 +282,16 @@ variable "edge_reader_ids" {
   }
 }
 
+variable "landingzones_apply_id" {
+  description = "The object ID of spn-landingzones-apply, the owner of the landing zone's app registrations and service principals (ADR 0034). Passed in, because the plan runs as spn-landingzones-plan."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.landingzones_apply_id))
+    error_message = "landingzones_apply_id must be the object ID of spn-landingzones-apply."
+  }
+}
+
 variable "pim" {
   description = "Whether the Trislab groups get PIM-eligible instead of direct role assignments. False until Entra ID P2 is bought (ADR 0053)."
   type        = bool

@@ -11,8 +11,8 @@ mock_provider "azurerm" {
   mock_data "azurerm_resources" {
     defaults = { resources = [{ name = "privatelink.blob.core.windows.net", id = "/subscriptions/081e6efa-cbdd-493d-866e-b85f22419b9a/resourceGroups/rg-platform-dns/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net", type = "t", location = "global", resource_group_name = "rg-platform-dns", tags = {} }] }
   }
-  mock_resource "azurerm_subscription" {
-    defaults = { subscription_id = "22222222-2222-2222-2222-222222222222" }
+  mock_data "azurerm_subscriptions" {
+    defaults = { subscriptions = [] }
   }
   mock_resource "azurerm_virtual_network" {
     defaults = { id = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/v" }
@@ -22,6 +22,9 @@ mock_provider "azurerm" {
 mock_provider "azapi" {
   mock_resource "azapi_resource" {
     defaults = { id = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/v" }
+  }
+  mock_resource "azapi_resource_action" {
+    defaults = { output = { subscription_id = "22222222-2222-2222-2222-222222222222" } }
   }
   mock_data "azapi_resource_list" {
     defaults = { output = { ids = ["/subscriptions/2/providers/Microsoft.Authorization/roleAssignments/00000000-0000-0000-0000-000000000001"] } }
@@ -64,6 +67,23 @@ variables {
     owner   = { products = true }, subscription = "sub-products-sandbox-neu", region = "northeurope"
     network = { spoke_cidr = "10.32.0.0/20" }, budget = { monthly_eur = 100 }
     access  = [{ group = "grp-devops", role = "Contributor", pim = true }]
+  }
+}
+
+# Once the subscription exists, its ID comes from the list at plan, so nothing
+# keyed on it waits for the alias PUT.
+run "existing_subscription" {
+  command = plan
+  override_data {
+    target = data.azurerm_subscriptions.this
+    values = { subscriptions = [
+      { display_name = "sub-products-sandbox-neu", subscription_id = "99999999-9999-9999-9999-999999999999", id = "/subscriptions/99999999-9999-9999-9999-999999999999", location_placement_id = "", quota_id = "", spending_limit = "", state = "Enabled", tags = {}, tenant_id = "" },
+      { display_name = "sub-products-sandbox-neu-old", subscription_id = "12121212-1212-1212-1212-121212121212", id = "/subscriptions/12121212-1212-1212-1212-121212121212", location_placement_id = "", quota_id = "", spending_limit = "", state = "Enabled", tags = {}, tenant_id = "" },
+    ] }
+  }
+  assert {
+    condition     = azapi_resource_action.management_group.resource_id == "/providers/Microsoft.Management/managementGroups/mg-lz-standard/subscriptions/99999999-9999-9999-9999-999999999999"
+    error_message = azapi_resource_action.management_group.resource_id
   }
 }
 
@@ -230,7 +250,7 @@ run "experiment" {
     error_message = "experiment"
   }
   assert {
-    condition     = azurerm_subscription.this.billing_scope_id == "/providers/Microsoft.Billing/billingAccounts/ba/billingProfiles/bp/invoiceSections/FLNE-ZNPI-PJA-PGB" && local.tags.EnvironmentName == "experiment"
+    condition     = azapi_resource_action.subscription.body.properties.billingScope == "/providers/Microsoft.Billing/billingAccounts/ba/billingProfiles/bp/invoiceSections/FLNE-ZNPI-PJA-PGB" && local.tags.EnvironmentName == "experiment"
     error_message = "billing"
   }
   assert {

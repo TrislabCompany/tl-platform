@@ -45,8 +45,11 @@ locals {
   ag_finops             = "${local.platform_subscription}/resourceGroups/rg-platform-governance/providers/Microsoft.Insights/actionGroups/ag-finops"
   tfstate_stamps        = "${local.platform_subscription}/resourceGroups/rg-platform-state/providers/Microsoft.Storage/storageAccounts/stplatformtfstate${var.platform_suffix}/blobServices/default/containers/tfstate-stamps"
 
-  subscription_id    = azurerm_subscription.this.subscription_id
-  subscription_scope = "/subscriptions/${local.subscription_id}"
+  # Listed at plan once the subscription exists; on the first apply, the PUT's
+  # response.
+  listed_subscription = [for s in data.azurerm_subscriptions.this.subscriptions : s.subscription_id if s.display_name == var.lz.subscription]
+  subscription_id     = length(local.listed_subscription) == 1 ? local.listed_subscription[0] : azapi_resource_action.subscription.output.subscription_id
+  subscription_scope  = "/subscriptions/${local.subscription_id}"
 
   # Built-in role IDs. Role assignments name roles by ID, so nothing is looked
   # up in a subscription that doesn't exist yet.

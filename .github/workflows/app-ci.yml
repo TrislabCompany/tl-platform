@@ -1,0 +1,298 @@
+name: App CI
+
+# Reusable CI of every app repository (13-app-templates.md sections 4.1 to 4.3
+# and 5 in tl-cloud-infrastructure). The repository's ci.yml calls it on every
+# PR and every push to main, pinned to a tag app-workflows/v<x.y.z>; its job is
+# named `ci` like the one here, so the check is `ci / ci`.
+#
+# Checks platform.yaml against the schema below and the rules a schema can't
+# say, checks .trivyignore, builds every image in platform.yaml, runs the
+# caller's test command, and scans each image with Trivy. Pushes nothing and
+# needs no secret. The schema lives here, not in a file, because a called
+# workflow can't check out its own repository at its own tag; the templates
+# carry a copy as platform.schema.json for the editor.
+
+on:
+  workflow_call:
+    inputs:
+      test-command:
+        description: One shell line, run at the repository root after Node and .NET are installed
+        type: string
+        required: true
+
+permissions: {}
+
+env:
+  CONFTEST_VERSION: 0.71.0
+  TRIVY_VERSION: 0.74.0
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install conftest and Trivy
+        run: |
+          install() {
+            local tool=$1 base=$2 asset=$3 sums=$4 dir="$RUNNER_TEMP/tools/$1"
+            mkdir -p "$dir"
+            (
+              cd "$dir"
+              curl -fsSL -o "$asset" "$base/$asset"
+              curl -fsSL -o sums.txt "$base/$sums"
+              grep " $asset\$" sums.txt | sha256sum -c -
+              tar -xzf "$asset" "$tool"
+            )
+            echo "$dir" >> "$GITHUB_PATH"
+          }
+          install conftest "https://github.com/open-policy-agent/conftest/releases/download/v$CONFTEST_VERSION" \
+            "conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" checksums.txt
+          install trivy "https://github.com/aquasecurity/trivy/releases/download/v$TRIVY_VERSION" \
+            "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" "trivy_${TRIVY_VERSION}_checksums.txt"
+
+      - name: Check platform.yaml
+        run: |
+          if [ ! -f platform.yaml ]; then
+            echo "::error::platform.yaml is missing at the repository root"
+            exit 1
+          fi
+          dir="$RUNNER_TEMP/platform"
+          mkdir -p "$dir/policy" "$dir/data"
+          cat > "$dir/platform.schema.json" <<'JSON'
+          {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "platform.yaml",
+            "description": "The images a repository builds and the sizing of its apps (13-app-templates.md section 5)",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["images", "apps"],
+            "properties": {
+              "images": {
+                "description": "Image name to build. The name becomes ghcr.io/<org>/<repository>/<name>",
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": { "pattern": "^[a-z0-9-]+$" },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["dockerfile"],
+                  "properties": {
+                    "dockerfile": { "description": "The Dockerfile, a path in the repository", "type": "string", "minLength": 1 },
+                    "context": { "description": "The build context, a folder in the repository. Default: the repository root", "type": "string", "minLength": 1 }
+                  }
+                }
+              },
+              "apps": {
+                "description": "App name, as apps[].name in the stamp's stamp.yaml, to app",
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": { "$ref": "#/definitions/app" }
+              },
+              "environments": {
+                "description": "Overrides per Environment, named as in the repository",
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": { "$ref": "#/definitions/override" }
+                }
+              }
+            },
+            "definitions": {
+              "app": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["image", "profile", "cpu", "memory", "min_replicas", "max_replicas"],
+                "properties": {
+                  "image": { "description": "The app's container, a name from images", "type": "string" },
+                  "init_image": { "description": "An init container that runs to completion before the app's container starts, a name from images", "type": "string" },
+                  "profile": { "$ref": "#/definitions/profile" },
+                  "cpu": { "$ref": "#/definitions/cpu" },
+                  "memory": { "$ref": "#/definitions/memory" },
+                  "min_replicas": { "$ref": "#/definitions/min_replicas" },
+                  "max_replicas": { "$ref": "#/definitions/max_replicas" }
+                }
+              },
+              "override": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "profile": { "$ref": "#/definitions/profile" },
+                  "cpu": { "$ref": "#/definitions/cpu" },
+                  "memory": { "$ref": "#/definitions/memory" },
+                  "min_replicas": { "$ref": "#/definitions/min_replicas" },
+                  "max_replicas": { "$ref": "#/definitions/max_replicas" }
+                }
+              },
+              "profile": { "description": "Consumption or Dedicated-<type>", "type": "string", "pattern": "^(Consumption|Dedicated-[A-Za-z0-9]+)$" },
+              "cpu": { "description": "vCPU per replica, in steps of 0.25", "type": "number", "minimum": 0.25, "multipleOf": 0.25 },
+              "memory": { "description": "Memory per replica, <n>Gi", "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?Gi$" },
+              "min_replicas": { "type": "integer", "minimum": 0, "maximum": 300 },
+              "max_replicas": { "type": "integer", "minimum": 1, "maximum": 300 }
+            }
+          }
+          JSON
+          jq '{platform_schema: .}' "$dir/platform.schema.json" > "$dir/data/schema.json"
+          cat > "$dir/policy/platform.rego" <<'REGO'
+          package platform
+
+          deny contains msg if {
+            [ok, errors] := json.match_schema(input, data.platform_schema)
+            not ok
+            some e in errors
+            msg := sprintf("%s: %s%s", [e.field, e.desc, value_note(e.field)])
+          }
+
+          value_note(field) := sprintf(" (value: %v)", [v]) if {
+            v := object.get(input, split(field, "."), null)
+            v != null
+            not is_object(v)
+          } else := ""
+
+          deny contains msg if {
+            some name, app in input.apps
+            some field in ["image", "init_image"]
+            image := app[field]
+            not input.images[image]
+            msg := sprintf("apps.%s.%s: %v is not an entry of images", [name, field, image])
+          }
+
+          deny contains msg if {
+            some env, apps in input.environments
+            some name, _ in apps
+            not input.apps[name]
+            msg := sprintf("environments.%s.%s: %s is not an entry of apps", [env, name, name])
+          }
+
+          # Each app as written under apps, and once more per Environment with
+          # that Environment's overrides on top.
+          sized contains [sprintf("apps.%s", [name]), app] if {
+            some name, app in input.apps
+          }
+
+          sized contains [sprintf("environments.%s.%s", [env, name]), object.union(input.apps[name], o)] if {
+            some env, apps in input.environments
+            some name, o in apps
+          }
+
+          deny contains msg if {
+            some [path, app] in sized
+            app.max_replicas < app.min_replicas
+            msg := sprintf("%s: max_replicas %v is less than min_replicas %v", [path, app.max_replicas, app.min_replicas])
+          }
+
+          deny contains msg if {
+            some [path, app] in sized
+            app.profile == "Consumption"
+            to_number(trim_suffix(app.memory, "Gi")) != app.cpu * 2
+            msg := sprintf("%s: memory %v must be twice cpu %v in Gi on Consumption", [path, app.memory, app.cpu])
+          }
+          REGO
+          conftest test platform.yaml --policy "$dir/policy" --data "$dir/data" --namespace platform --no-color
+
+      - name: Check .trivyignore
+        run: |
+          [ -f .trivyignore ] || exit 0
+          awk -v today="$(date -u +%F)" '
+            /^[[:space:]]*$/ { above = ""; next }
+            /^[[:space:]]*#/ { above = $0; next }
+            {
+              if (above ~ /^# reason: .+; expires: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) {
+                expires = substr(above, length(above) - 9)
+                if (expires < today) { printf "::error file=.trivyignore,line=%d::%s expired on %s\n", NR, $1, expires; bad = 1 }
+              } else {
+                printf "::error file=.trivyignore,line=%d::%s has no line \"# reason: <text>; expires: YYYY-MM-DD\" above it\n", NR, $1; bad = 1
+              }
+              above = ""
+            }
+            END { exit bad }
+          ' .trivyignore
+
+      - name: Build the images
+        run: |
+          yq -r '.images | to_entries[] | [.key, .value.dockerfile, (.value.context // ".")] | @tsv' platform.yaml |
+            while IFS=$'\t' read -r name dockerfile context; do
+              echo "::group::$name"
+              docker build --file "$dockerfile" --tag "app-ci/$name:$GITHUB_SHA" "$context"
+              echo "::endgroup::"
+            done
+
+      - name: Find the runtimes
+        id: runtimes
+        run: |
+          locks=$(find . -path ./.git -prune -o -name node_modules -prune -o \( -name pnpm-lock.yaml -o -name package-lock.json \) -print)
+          {
+            echo "node=$([ -n "$locks" ] && echo true || echo false)"
+            echo "pnpm_dirs=$(grep 'pnpm-lock.yaml$' <<< "$locks" | xargs -r -n1 dirname | tr '\n' ' ')"
+            echo "dotnet=$([ -f global.json ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+
+      - if: steps.runtimes.outputs.node == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      # pnpm comes from Corepack at the version in packageManager of the
+      # package.json next to the lock file.
+      - if: steps.runtimes.outputs.pnpm_dirs != ''
+        name: Install pnpm
+        env:
+          PNPM_DIRS: ${{ steps.runtimes.outputs.pnpm_dirs }}
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: 0
+        run: |
+          corepack enable
+          for d in $PNPM_DIRS; do
+            pm=$(jq -r '.packageManager // empty' "$d/package.json")
+            if [[ $pm != pnpm@* ]]; then
+              echo "::error file=$d/package.json::packageManager must name the pnpm version, e.g. pnpm@10.30.1"
+              exit 1
+            fi
+            corepack install --global "$pm"
+          done
+
+      - if: steps.runtimes.outputs.dotnet == 'true'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: bash -eo pipefail -c "$TEST_COMMAND"
+
+      # Fails on any secret, and on a CRITICAL or HIGH vulnerability that has a
+      # fixed version; vulnerabilities without a fix are left out. Everything
+      # else it finds goes to the job summary.
+      - name: Scan the images
+        run: |
+          ignore=()
+          [ -f .trivyignore ] && ignore=(--ignorefile .trivyignore)
+          bad=0
+          for name in $(yq -r '.images | keys | .[]' platform.yaml); do
+            report="$RUNNER_TEMP/trivy-$name.json"
+            trivy image --scanners vuln,secret --ignore-unfixed "${ignore[@]}" --format json --output "$report" --no-progress --quiet "app-ci/$name:$GITHUB_SHA"
+            {
+              echo "### Trivy: $name"
+              echo
+              echo "| Severity | ID | Package or file | Installed | Fixed |"
+              echo "|---|---|---|---|---|"
+              jq -r '.Results[]? | .Target as $t | (.Vulnerabilities[]? | "| \(.Severity) | \(.VulnerabilityID) | \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion) |"), (.Secrets[]? | "| \(.Severity) | secret \(.RuleID) | \($t):\(.StartLine) | | |")' "$report"
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+            failed=$(jq -r '.Results[]? | .Target as $t | (.Vulnerabilities[]? | select(.Severity == "CRITICAL" or .Severity == "HIGH") | "\(.Severity) \(.VulnerabilityID) in \(.PkgName) \(.InstalledVersion), fixed in \(.FixedVersion)"), (.Secrets[]? | "secret \(.RuleID) in \($t):\(.StartLine)")' "$report")
+            if [ -n "$failed" ]; then
+              while IFS= read -r line; do echo "::error::$name: $line"; done <<< "$failed"
+              bad=1
+            fi
+          done
+          exit "$bad"

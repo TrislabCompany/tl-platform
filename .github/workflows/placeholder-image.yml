@@ -1,0 +1,77 @@
+name: Placeholder image
+
+# Builds images/platform-placeholder/ on a push of a tag
+# platform-placeholder/v<major>.<minor>.<patch> and pushes
+# ghcr.io/trislabcompany/platform-placeholder:<major>.<minor>.<patch>, the image
+# every app of a stamp starts on (06 sections 2.2 and 6.3 in
+# tl-cloud-infrastructure). A package a workflow pushes with GITHUB_TOKEN starts
+# private and takes this repository's access; this workflow never changes its
+# visibility (ADR 0026).
+
+on:
+  push:
+    tags:
+      - "platform-placeholder/v*"
+
+permissions: {}
+
+jobs:
+  image:
+    name: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/trislabcompany/platform-placeholder
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the version from the tag
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#platform-placeholder/v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$TAG is not platform-placeholder/v<major>.<minor>.<patch>"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+
+      # Templates pin the image by digest, so a version is pushed once and never
+      # replaced.
+      - name: Check the version isn't pushed yet
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if docker manifest inspect "$IMAGE:$VERSION" > /dev/null 2>&1; then
+            echo "::error::$IMAGE:$VERSION already exists"
+            exit 1
+          fi
+
+      - name: Build and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=$SOURCE" \
+            --label "org.opencontainers.image.revision=$REVISION" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            -t "$IMAGE:$VERSION" images/platform-placeholder
+          docker push "$IMAGE:$VERSION"
+          echo "Pushed $(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$VERSION")" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign out of GHCR
+        if: always()
+        run: docker logout ghcr.io

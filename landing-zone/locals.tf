@@ -79,3 +79,8 @@ data "azurerm_role_definition" "stamp_app_deploy" {
   name  = "Stamp app deploy"
   scope = "/providers/Microsoft.Management/managementGroups/mg-landingzones"
 }
+
+data "azurerm_role_definition" "stamp_plan_reader" {
+  name  = "Stamp plan reader"
+  scope = "/providers/Microsoft.Management/managementGroups/mg-landingzones"
+}

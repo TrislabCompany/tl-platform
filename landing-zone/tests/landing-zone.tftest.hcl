@@ -114,7 +114,7 @@ run "sandbox" {
     error_message = "tags"
   }
   assert {
-    condition     = length(azurerm_role_assignment.identity) == 7 && length(azurerm_role_assignment.edge) == 2 && length(github_actions_environment_variable.this) == 5
+    condition     = length(azurerm_role_assignment.identity) == 8 && length(azurerm_role_assignment.edge) == 2 && length(github_actions_environment_variable.this) == 5
     error_message = "identities"
   }
   assert {

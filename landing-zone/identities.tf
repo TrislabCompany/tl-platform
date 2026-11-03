@@ -189,6 +189,11 @@ locals {
     plan-reader = {
       identity = "plan", scope = local.subscription_scope, role = local.roles["Reader"], condition = null
     }
+    # A refresh of a container app lists its secrets, which are Key Vault
+    # references only (ADR 0024).
+    plan-stamp-reader = {
+      identity = "plan", scope = local.subscription_scope, role = data.azurerm_role_definition.stamp_plan_reader.role_definition_id, condition = null
+    }
     plan-key-vault = {
       identity = "plan", scope = azapi_resource.key_vault[0].id, role = local.roles["Key Vault Reader"], condition = null
     }

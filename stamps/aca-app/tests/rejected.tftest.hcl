@@ -27,8 +27,11 @@ mock_provider "azurerm" {
   mock_resource "azurerm_network_security_group" {
     defaults = { id = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-s/providers/Microsoft.Network/networkSecurityGroups/nsg-s" }
   }
-  mock_resource "azurerm_key_vault_secret" {
-    defaults = { versionless_id = "https://kv-products-sb-1234.vault.azure.net/secrets/s", resource_versionless_id = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-products-sandbox-neu-security/providers/Microsoft.KeyVault/vaults/kv-products-sb-1234/secrets/s" }
+}
+
+mock_provider "azapi" {
+  mock_resource "azapi_resource" {
+    defaults = { id = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-products-sandbox-neu-security/providers/Microsoft.KeyVault/vaults/kv-products-sb-1234/secrets/s", output = { properties = { secretUri = "https://kv-products-sb-1234.vault.azure.net/secrets/s" } } }
   }
 }
 

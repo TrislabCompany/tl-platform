@@ -6,11 +6,12 @@ name: App CI
 # named `ci` like the one here, so the check is `ci / ci`.
 #
 # Checks platform.yaml against the schema below and the rules a schema can't
-# say, checks .trivyignore, builds every image in platform.yaml, runs the
-# caller's test command, and scans each image with Trivy. Pushes nothing and
-# needs no secret. The schema lives here, not in a file, because a called
-# workflow can't check out its own repository at its own tag; the templates
-# carry a copy as platform.schema.json for the editor.
+# say, and its values against the caps in the repository variable SIZING_CAPS;
+# checks .trivyignore, builds every image in platform.yaml, runs the caller's
+# test command, and scans each image with Trivy. Pushes nothing and signs in
+# nowhere. The schema lives here, not in a file, because a called workflow
+# can't check out its own repository at its own tag; the templates carry a
+# copy as platform.schema.json for the editor.
 
 on:
   workflow_call:
@@ -19,6 +20,10 @@ on:
         description: One shell line, run at the repository root after Node and .NET are installed
         type: string
         required: true
+    secrets:
+      packages-token:
+        description: A token with read:packages, for a repository that restores packages from GitHub Packages. The test command gets it as PACKAGES_TOKEN, each image build as the BuildKit secret `packages`
+        required: false
 
 permissions: {}
 
@@ -199,6 +204,42 @@ jobs:
           REGO
           conftest test platform.yaml --policy "$dir/policy" --data "$dir/data" --namespace platform --no-color
 
+      # SIZING_CAPS is JSON, Environment -> app -> caps, written by global/github
+      # in tl-cloud-infrastructure (11-onboarding.md section 4.3). A template
+      # deploys nowhere and has none; anywhere else an empty one fails, so no
+      # PR passes unchecked (13 section 5.2). The same jq program checks the
+      # SizingCaps tag before each deploy in app-deploy.yml and app-release.yml.
+      - name: Check the sizing caps
+        env:
+          SIZING_CAPS: ${{ vars.SIZING_CAPS }}
+          IS_TEMPLATE: ${{ github.event.repository.is_template }}
+        run: |
+          if [ -z "$SIZING_CAPS" ] || [ "$(jq length <<< "$SIZING_CAPS")" = 0 ]; then
+            if [ "$IS_TEMPLATE" = true ]; then
+              echo "::notice::SIZING_CAPS is empty in a template repository, so the caps check is skipped"
+              exit 0
+            fi
+            echo "::error::The repository variable SIZING_CAPS is empty or missing, so platform.yaml can't be checked against the caps. global/github writes it for every repository a stamp deploys from"
+            exit 1
+          fi
+          platform=$(yq -o json platform.yaml)
+          failed=$(jq -r --argjson platform "$platform" '
+            def gi: rtrimstr("Gi") | tonumber;
+            to_entries[] | .key as $env | .value | to_entries[] | .key as $app | .value as $c
+            | if $platform.apps[$app] == null then "\($env): \($app) has no entry under apps in platform.yaml"
+              else ($platform.apps[$app] + ($platform.environments[$env][$app] // {})) as $a
+                | (if $a.cpu > $c.cpu then "\($env): \($app): cpu \($a.cpu) is above the cap \($c.cpu)" else empty end),
+                  (if ($a.memory | gi) > ($c.memory | gi) then "\($env): \($app): memory \($a.memory) is above the cap \($c.memory)" else empty end),
+                  (if $a.min_replicas < $c.min_replicas then "\($env): \($app): min_replicas \($a.min_replicas) is below the cap \($c.min_replicas)" else empty end),
+                  (if $a.max_replicas > $c.max_replicas then "\($env): \($app): max_replicas \($a.max_replicas) is above the cap \($c.max_replicas)" else empty end),
+                  (if ($c.profiles | index($a.profile)) == null then "\($env): \($app): profile \($a.profile) is not one of the caps \($c.profiles | join(", "))" else empty end)
+              end' <<< "$SIZING_CAPS")
+          if [ -n "$failed" ]; then
+            while IFS= read -r line; do echo "::error file=platform.yaml::$line"; done <<< "$failed"
+            exit 1
+          fi
+          echo "platform.yaml is within the caps of $(jq -r 'keys | join(", ")' <<< "$SIZING_CAPS")"
+
       - name: Check .trivyignore
         run: |
           [ -f .trivyignore ] || exit 0
@@ -218,11 +259,15 @@ jobs:
           ' .trivyignore
 
       - name: Build the images
+        env:
+          PACKAGES_TOKEN: ${{ secrets.packages-token }}
         run: |
+          secret=()
+          [ -n "$PACKAGES_TOKEN" ] && secret=(--secret "id=packages,env=PACKAGES_TOKEN")
           yq -r '.images | to_entries[] | [.key, .value.dockerfile, (.value.context // ".")] | @tsv' platform.yaml |
             while IFS=$'\t' read -r name dockerfile context; do
               echo "::group::$name"
-              docker build --file "$dockerfile" --tag "app-ci/$name:$GITHUB_SHA" "$context"
+              docker build "${secret[@]}" --file "$dockerfile" --tag "app-ci/$name:$GITHUB_SHA" "$context"
               echo "::endgroup::"
             done
 
@@ -268,6 +313,7 @@ jobs:
       - name: Test
         env:
           TEST_COMMAND: ${{ inputs.test-command }}
+          PACKAGES_TOKEN: ${{ secrets.packages-token }}
         run: bash -eo pipefail -c "$TEST_COMMAND"
 
       # Fails on any secret, and on a CRITICAL or HIGH vulnerability that has a

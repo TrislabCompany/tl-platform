@@ -34,6 +34,8 @@ The root passes one `azurerm` provider, signed in to `sub-platform`, with `resou
 
 Releases up to `v0.6.0` are tagged without a prefix. Later releases are tagged `landing-zone/v<x.y.z>`, e.g. `?ref=landing-zone/v0.7.0`.
 
+- `v0.7.0`:
+  - **Stamp plan reader.** `spn-lz-<lz>-plan` gets the custom role "Stamp plan reader" on the subscription, so a stamp's plan can refresh its container apps: `azurerm_container_app` lists an app's secrets on every read, which Reader doesn't allow. The secrets are Key Vault references only, so the list holds no value (ADR 0024). Needs the role from `platform/azure/governance`.
 - `v0.6.0`:
   - **Subscription by alias PUT.** The subscription is created by `azapi_resource_action` instead of `azurerm_subscription`. Reading an alias needs `Microsoft.Subscription/aliases/write`, so the plan of an existing landing zone failed. A `removed` block drops `azurerm_subscription` from the state without cancelling anything; the next apply's PUT adopts the alias. At plan, the subscription's ID comes from the list of subscriptions, so nothing keyed on it is planned as replaced.
 - `v0.5.0`:

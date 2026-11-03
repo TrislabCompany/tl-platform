@@ -17,7 +17,7 @@ variable "secrets" {
   description = "Name without the stamp prefix -> version and content type. A placeholder is written once with the text placeholder and never changed by the template (06 section 6.4); every other value comes from values."
   type = map(object({
     version      = number
-    content_type = optional(string)
+    content_type = optional(string, "")
     placeholder  = optional(bool, false)
   }))
 

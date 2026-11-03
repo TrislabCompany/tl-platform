@@ -26,10 +26,10 @@ Steps 1 to 6 of section 6.1, in `rg-<stamp>`: the subnet and NSG (`blocks/stamp-
 ## To check in the pilot
 
 - A plan never gets `ghcr_pull_token` or `origin_certs`, so it passes a stand-in to `value_wo`, which isn't written. The apply job must pass both.
-- A refresh of `azurerm_key_vault_secret` with Key Vault Reader only (ADR 0024).
 - The environment loads the Origin CA certificate, a PEM secret, from the Key Vault with `id-<stamp>-workload`.
 
 ## Changes
 
+- `v1.0.2`: writes the Key Vault secrets through Azure Resource Manager (`azapi_resource`) instead of `azurerm_key_vault_secret`, whose refresh reads the value, which the plan identity's Key Vault Reader can't (ADR 0024). A `moved` block takes over the existing secrets.
 - `v1.0.1`: binds the hostnames in `edge_hostnames`, from `EDGE_HOSTNAMES`, instead of looking up `asuid.<hostname>`: the `dns` provider failed the plan on a name that didn't exist yet (ADR 0027). The generator passes the new input.
 - `v1.0.0`: first release. `Consumption` only, no zone redundancy, no `data` (section 8).

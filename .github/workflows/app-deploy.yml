@@ -111,7 +111,7 @@ jobs:
           PACKAGES_TOKEN: ${{ secrets.packages-token }}
         run: |
           secret=()
-          [ -n "$PACKAGES_TOKEN" ] && secret=(--secret id=packages,env=PACKAGES_TOKEN)
+          [ -n "$PACKAGES_TOKEN" ] && secret=(--secret "id=packages,env=PACKAGES_TOKEN")
           dockerfile=$(yq -r ".images[\"$IMAGE\"].dockerfile" platform.yaml)
           context=$(yq -r ".images[\"$IMAGE\"].context // \".\"" platform.yaml)
           docker build "${secret[@]}" --file "$dockerfile" --tag "$REF" "$context"

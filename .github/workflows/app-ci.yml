@@ -263,7 +263,7 @@ jobs:
           PACKAGES_TOKEN: ${{ secrets.packages-token }}
         run: |
           secret=()
-          [ -n "$PACKAGES_TOKEN" ] && secret=(--secret id=packages,env=PACKAGES_TOKEN)
+          [ -n "$PACKAGES_TOKEN" ] && secret=(--secret "id=packages,env=PACKAGES_TOKEN")
           yq -r '.images | to_entries[] | [.key, .value.dockerfile, (.value.context // ".")] | @tsv' platform.yaml |
             while IFS=$'\t' read -r name dockerfile context; do
               echo "::group::$name"

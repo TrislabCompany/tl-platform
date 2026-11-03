@@ -32,12 +32,6 @@ mock_provider "azurerm" {
   }
 }
 
-mock_provider "dns" {
-  mock_data "dns_txt_record_set" {
-    defaults = { records = [] }
-  }
-}
-
 # The files the template reads by path (catalog/main.tf).
 override_module {
   target = module.catalog
@@ -173,25 +167,22 @@ run "no_external_app_no_rule_200" {
   }
 }
 
-run "binding_skipped_without_asuid" {
+run "binding_skipped_without_edge_hostname" {
   command = apply
   variables {
     origin_cert_versions = { TRISLAB_COM = 1 }
   }
   assert {
     condition     = module.hostname_bindings.bound == []
-    error_message = "bound without the asuid record"
+    error_message = "bound without the edge hostname"
   }
 }
 
-run "binding_made_with_asuid" {
+run "binding_made_with_edge_hostname" {
   command = apply
   variables {
     origin_cert_versions = { TRISLAB_COM = 1 }
-  }
-  override_data {
-    target = module.hostname_bindings.data.dns_txt_record_set.asuid
-    values = { records = ["VERIFICATION-ID"] }
+    edge_hostnames       = ["staging-corporate-site.trislab.com"]
   }
   assert {
     condition     = jsonencode(module.hostname_bindings.bound) == jsonencode(["staging-corporate-site.trislab.com"])
@@ -201,9 +192,8 @@ run "binding_made_with_asuid" {
 
 run "binding_skipped_without_certificate" {
   command = apply
-  override_data {
-    target = module.hostname_bindings.data.dns_txt_record_set.asuid
-    values = { records = ["VERIFICATION-ID"] }
+  variables {
+    edge_hostnames = ["staging-corporate-site.trislab.com"]
   }
   assert {
     condition     = module.hostname_bindings.bound == []

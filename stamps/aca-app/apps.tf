@@ -126,10 +126,10 @@ module "hostname_bindings" {
   lz_name               = var.lz.name
   hostnames             = { for h, app in local.hostnames : h => azurerm_container_app.this[app].id if contains(local.external_apps, app) }
   environment_id        = azurerm_container_app_environment.this.id
-  verification_id       = azurerm_container_app_environment.this.custom_domain_verification_id
   workload_identity_id  = azurerm_user_assigned_identity.workload.id
   workload_principal_id = azurerm_user_assigned_identity.workload.principal_id
   origin_cert_versions  = var.origin_cert_versions
+  edge_hostnames        = var.edge_hostnames
   origin_certs          = var.origin_certs
   tags                  = local.tags
 }

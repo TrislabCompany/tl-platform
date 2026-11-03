@@ -138,7 +138,7 @@ run "customer_sandbox" {
     error_message = "secret setting"
   }
   assert {
-    condition     = !azurerm_container_app.this["api"].ingress[0].external_enabled && contains([for e in azurerm_container_app.this["api"].template[0].container[0].env : e.value if e.name == "LOG_LEVEL"], "info")
+    condition     = !azurerm_container_app.this["api"].ingress[0].external_enabled && length(azurerm_container_app.this["api"].ingress[0].ip_security_restriction) == 0 && contains([for e in azurerm_container_app.this["api"].template[0].container[0].env : e.value if e.name == "LOG_LEVEL"], "info")
     error_message = "internal app"
   }
 }

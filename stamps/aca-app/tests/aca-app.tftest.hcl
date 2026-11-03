@@ -121,6 +121,10 @@ run "shr_web_staging" {
     error_message = "ingress"
   }
   assert {
+    condition     = jsonencode([for r in azurerm_container_app.this["web"].ingress[0].ip_security_restriction : [r.action, r.ip_address_range]]) == jsonencode([["Allow", "173.245.48.0/20"], ["Allow", "103.21.244.0/22"]])
+    error_message = "the external app admits only Cloudflare's ipv4 ranges"
+  }
+  assert {
     condition     = azurerm_container_app_environment.this.infrastructure_resource_group_name == "rg-shr-web-staging-infra" && !azurerm_container_app_environment.this.zone_redundancy_enabled
     error_message = "environment"
   }

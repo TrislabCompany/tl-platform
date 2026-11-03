@@ -30,6 +30,7 @@ Steps 1 to 6 of section 6.1, in `rg-<stamp>`: the subnet and NSG (`blocks/stamp-
 
 ## Changes
 
+- `v1.0.3`: every app with `ingress: external` admits only the `ipv4` ranges of `cloudflare_ips`, as IP restrictions on its ingress: the NSG doesn't filter traffic to the environment's public address (ADR 0027).
 - `v1.0.2`: writes the Key Vault secrets through Azure Resource Manager (`azapi_resource`) instead of `azurerm_key_vault_secret`, whose refresh reads the value, which the plan identity's Key Vault Reader can't (ADR 0024). A `moved` block takes over the existing secrets.
 - `v1.0.1`: binds the hostnames in `edge_hostnames`, from `EDGE_HOSTNAMES`, instead of looking up `asuid.<hostname>`: the `dns` provider failed the plan on a name that didn't exist yet (ADR 0027). The generator passes the new input.
 - `v1.0.0`: first release. `Consumption` only, no zone redundancy, no `data` (section 8).

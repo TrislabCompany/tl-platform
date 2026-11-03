@@ -32,12 +32,6 @@ mock_provider "azurerm" {
   }
 }
 
-mock_provider "dns" {
-  mock_data "dns_txt_record_set" {
-    defaults = { records = [] }
-  }
-}
-
 # The files the template reads by path (catalog/main.tf).
 override_module {
   target = module.catalog

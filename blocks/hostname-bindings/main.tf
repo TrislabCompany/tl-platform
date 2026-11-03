@@ -1,9 +1,10 @@
 # Binds the stamp's hostnames with the zone's Cloudflare Origin CA certificate
 # (06-stamp-templates.md section 6.6, ADR 0027). global/edge writes the DNS
-# records and hands over the certificate; a hostname is bound only when its
-# asuid record holds the environment's verification ID and its zone's
-# certificate is in the Key Vault, and skipped otherwise. The pipeline's next
-# apply of the stamp binds it.
+# records and hands over the certificate; a hostname is bound only when
+# global/edge lists it in EDGE_HOSTNAMES and its zone's certificate is in the
+# Key Vault, and skipped otherwise. The pipeline's next apply of the stamp
+# binds it. No DNS lookup: the dns provider fails the plan on a name that
+# doesn't exist yet.
 
 locals {
   # A hostname's zone is its longest suffix whose <ZONE> key, in capitals with
@@ -20,17 +21,8 @@ locals {
 
   bound = {
     for f, app_id in var.hostnames : f => app_id
-    if local.zone_of[f] == null ? false : (
-      length(data.dns_txt_record_set.asuid[f].records) == 0 ? false : contains(data.dns_txt_record_set.asuid[f].records, var.verification_id)
-    )
+    if local.zone_of[f] != null && contains(var.edge_hostnames, f)
   }
-}
-
-# Empty while global/edge hasn't written the record. To check in the pilot:
-# that a name that doesn't exist yet returns an empty result (ADR 0027).
-data "dns_txt_record_set" "asuid" {
-  for_each = var.hostnames
-  host     = "asuid.${each.key}"
 }
 
 # <stamp>-origin-<zone>, written again exactly when the zone's version changes.

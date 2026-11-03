@@ -18,11 +18,6 @@ variable "environment_id" {
   type        = string
 }
 
-variable "verification_id" {
-  description = "The environment's custom domain verification ID, which the asuid records hold."
-  type        = string
-}
-
 variable "workload_identity_id" {
   description = "The resource ID of id-<stamp>-workload, which the environment loads the certificates with."
   type        = string
@@ -36,6 +31,11 @@ variable "workload_principal_id" {
 variable "origin_cert_versions" {
   description = "<ZONE> -> version of the zone's origin certificate, from ORIGIN_CERT_<ZONE>_VERSION in lz-<lz>."
   type        = map(number)
+}
+
+variable "edge_hostnames" {
+  description = "The hostnames whose CNAME and asuid records global/edge has written, from EDGE_HOSTNAMES in lz-<lz>."
+  type        = list(string)
 }
 
 variable "origin_certs" {

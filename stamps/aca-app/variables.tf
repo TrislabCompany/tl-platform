@@ -212,6 +212,12 @@ variable "origin_cert_versions" {
   default     = {}
 }
 
+variable "edge_hostnames" {
+  description = "The hostnames whose records global/edge has written, from EDGE_HOSTNAMES in lz-<lz>. The template binds only these (06 section 6.6)."
+  type        = list(string)
+  default     = []
+}
+
 variable "origin_certs" {
   description = "<ZONE> -> the PEM certificate and its private key, from the secrets ORIGIN_CERT_<ZONE> in lz-<lz>, on apply only."
   type        = map(string)

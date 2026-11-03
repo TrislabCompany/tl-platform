@@ -74,6 +74,10 @@ variable "origin_cert_versions" { # from ORIGIN_CERT_<ZONE>_VERSION in lz-$lz
   type    = map(number)
   default = {}
 }
+variable "edge_hostnames" { # from EDGE_HOSTNAMES in lz-$lz
+  type    = list(string)
+  default = []
+}
 variable "origin_certs" { # from the secrets ORIGIN_CERT_<ZONE> in lz-$lz, apply only
   type      = map(string)
   default   = {}
@@ -102,6 +106,7 @@ module "stamp" {
   github_owner_id         = var.github_owner_id
   app_repo_ids            = var.app_repo_ids
   origin_cert_versions    = var.origin_cert_versions
+  edge_hostnames          = var.edge_hostnames
   origin_certs            = var.origin_certs
   ghcr_pull_token_version = var.ghcr_pull_token_version
   ghcr_pull_token         = var.ghcr_pull_token

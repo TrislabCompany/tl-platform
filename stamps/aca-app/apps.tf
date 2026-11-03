@@ -53,6 +53,17 @@ resource "azurerm_container_app" "this" {
       target_port      = ingress.value.port
       transport        = "auto"
 
+      # The NSG doesn't filter traffic to the environment's public address, so
+      # an external app admits only Cloudflare itself (section 6.2).
+      dynamic "ip_security_restriction" {
+        for_each = ingress.value.ingress == "external" ? var.cloudflare_ips.ipv4 : []
+        content {
+          name             = "cloudflare-${ip_security_restriction.key}"
+          action           = "Allow"
+          ip_address_range = ip_security_restriction.value
+        }
+      }
+
       traffic_weight {
         latest_revision = true
         percentage      = 100

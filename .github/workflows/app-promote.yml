@@ -1,0 +1,341 @@
+name: App promote
+
+# Reusable promotion of every app repository (11-onboarding.md sections 8.2 and
+# 8.3, ADR 0040, in tl-cloud-infrastructure). The repository's promote.yml
+# calls it by hand with a version and an Environment, pinned to a tag
+# app-workflows/v<x.y.z>.
+#
+# Builds and tags nothing. Resolves the version to the digest of each image in
+# platform.yaml and checks that those digests run, healthy, in a release tier
+# Environment of the same owner: the latest deployment of `test` or `staging`
+# for `prod`, of `astra-group-test` for `astra-group-prod`. A rollback, the
+# version that ran in the target Environment before, is accepted too. A
+# pre-release version (-rc.<n>) is refused. Then deploys the digests in the
+# target Environment, whose job waits for its reviewers. Health is read from
+# the deployment history and the new revision, never from the app's hostname,
+# which may be behind Cloudflare Access.
+#
+# The step Deploy is the one of app-deploy.yml and app-release.yml, with the
+# digests of the version instead of the commit's; change all three together.
+# In a template repository every job is skipped.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version to promote, vX.Y.Z
+        type: string
+        required: true
+      environment:
+        description: The Environment of the prod tier to promote it to, such as prod
+        type: string
+        required: true
+
+permissions: {}
+
+env:
+  TIER: prod
+
+jobs:
+  check:
+    name: check
+    if: ${{ !github.event.repository.is_template }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+      deployments: read
+      actions: read
+    outputs:
+      sha: ${{ steps.check.outputs.sha }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the version and the Environment
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ inputs.environment }}
+        run: |
+          # The tier of an Environment is the last part of its name, and its
+          # owner the part before (11-onboarding.md section 8.1).
+          tier() {
+            local last=${1##*-}
+            case $last in
+              dev) echo dev ;;
+              test|staging|uat|perf|demo) echo release ;;
+              prod) echo prod ;;
+              *) if [[ $last =~ ^pr[0-9]+$ ]]; then echo preview; else echo none; fi ;;
+            esac
+          }
+          owner() { [[ $1 == *-* ]] && echo "${1%-*}" || echo ""; }
+
+          if ! [[ $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::$VERSION is not a version vX.Y.Z"
+            exit 1
+          fi
+          if [ "$(tier "$TARGET")" != "$TIER" ]; then
+            echo "::error::$TARGET is not an Environment of the $TIER tier. A release tag reaches the release tier; promote.yml only the $TIER tier"
+            exit 1
+          fi
+          if [[ $VERSION == *-rc.* ]]; then
+            echo "::error::$VERSION is a pre-release: it can be tested, never promoted to the $TIER tier (ADR 0040)"
+            exit 1
+          fi
+          names=$(gh api "repos/$GITHUB_REPOSITORY/environments" --paginate --jq '.environments[].name')
+          if ! grep -qx -- "$TARGET" <<< "$names"; then
+            echo "::error::$GITHUB_REPOSITORY has no Environment $TARGET"
+            exit 1
+          fi
+
+          if ! git rev-parse -q --verify "refs/tags/$VERSION^{commit}" > /dev/null; then
+            echo "::error::$VERSION is not a tag of $GITHUB_REPOSITORY"
+            exit 1
+          fi
+          sha=$(git rev-parse "refs/tags/$VERSION^{commit}")
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::$VERSION is on ${sha::7}, which is not a commit of main"
+            exit 1
+          fi
+
+          # The digest of each image of the version: release.yml tagged the
+          # digest of sha-<commit>, so both must be the same.
+          git show "$sha:platform.yaml" > "$RUNNER_TEMP/platform.yaml"
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin <<< "$GH_TOKEN"
+          for image in $(yq -r '.images | keys | .[]' "$RUNNER_TEMP/platform.yaml"); do
+            if ! digest=$(docker buildx imagetools inspect "$registry/$image:$VERSION" --format '{{json .Manifest}}' | jq -r .digest); then
+              echo "::error::$registry/$image:$VERSION doesn't exist: release.yml tags the images of a version"
+              exit 1
+            fi
+            built=$(docker buildx imagetools inspect "$registry/$image:sha-${sha::7}" --format '{{json .Manifest}}' | jq -r .digest)
+            if [ "$digest" != "$built" ]; then
+              echo "::error::$image:$VERSION is $digest, but sha-${sha::7} is $built"
+              exit 1
+            fi
+            echo "$image: $registry/$image@$digest"
+          done
+
+          # Where the version runs: the latest deployment of each release tier
+          # Environment of the same owner, and its latest status.
+          latest_state() {
+            local id
+            id=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=$1&per_page=1" | jq -r --arg v "$VERSION" --arg s "$sha" '.[0] | select(.ref == $v and .sha == $s) | .id')
+            [ -n "$id" ] || return 0
+            gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" --jq '.[0].state // empty'
+          }
+          found=""
+          while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            [ "$(tier "$name")" = release ] && [ "$(owner "$name")" = "$(owner "$TARGET")" ] || continue
+            state=$(latest_state "$name")
+            echo "$name: ${state:-another version}"
+            if [ "$state" = success ]; then
+              found=$name
+              break
+            fi
+          done <<< "$names"
+
+          # A rollback: the version ran successfully in the target before.
+          if [ -z "$found" ]; then
+            ran=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=$TARGET&ref=$VERSION&per_page=100" | jq -r --arg s "$sha" '.[] | select(.sha == $s) | .id' | while read -r id; do
+              gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" --jq '.[] | select(.state == "success") | .id' | head -n 1
+            done | head -n 1)
+            if [ -n "$ran" ]; then
+              found="$TARGET (a rollback)"
+            fi
+          fi
+          if [ -z "$found" ]; then
+            echo "::error::$VERSION isn't the latest healthy deployment of any release tier Environment of the owner of $TARGET, and never ran there. Release it first with a tag"
+            exit 1
+          fi
+          echo "$VERSION (${sha::7}) runs healthy in $found: it can go to $TARGET"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  # Waits for the Environment's reviewers. Signs in as id-<stamp>-appdeploy and
+  # changes only the images, the sizing and the profile of the apps in
+  # CONTAINER_APPS (06 section 6.3).
+  deploy:
+    name: deploy (${{ inputs.environment }})
+    needs: check
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+      deployments: write
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check the tier
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          PLATFORM_TIER: ${{ vars.PLATFORM_TIER }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+        run: |
+          if [ "$PLATFORM_TIER" != "$TIER" ]; then
+            echo "::error::$ENVIRONMENT has PLATFORM_TIER '$PLATFORM_TIER', but its name puts it in the $TIER tier"
+            exit 1
+          fi
+          if [ -z "$AZURE_CLIENT_ID" ]; then
+            echo "::error::$ENVIRONMENT has no AZURE_CLIENT_ID yet: global/github writes it once the stamp exists"
+            exit 1
+          fi
+
+      # The sizing comes from platform.yaml of the version, not of main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+          persist-credentials: false
+
+      # The job's own deployment carries the ref of the run; this one carries
+      # the version, which release status and the next promotion read.
+      - name: Record the deployment
+        id: record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          body=$(jq -nc --arg ref "$VERSION" --arg env "$ENVIRONMENT" \
+            '{ref: $ref, environment: $env, auto_merge: false, required_contexts: [], production_environment: true, description: "promote.yml \($ref)"}')
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id <<< "$body")
+          gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=in_progress \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          CONTAINER_APPS: ${{ vars.CONTAINER_APPS }}
+          RESOURCE_GROUP: ${{ vars.RESOURCE_GROUP }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          api=2025-01-01
+          arm=https://management.azure.com
+          dir="$RUNNER_TEMP/apps"
+          mkdir -p "$dir"
+          platform=$(yq -o json platform.yaml)
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+
+          # The digest of each image of the version.
+          docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin <<< "$GH_TOKEN"
+          declare -A digest
+          for image in $(jq -r '.images | keys[]' <<< "$platform"); do
+            digest[$image]=$(docker buildx imagetools inspect "$registry/$image:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+            echo "$image: $registry/$image@${digest[$image]}"
+          done
+
+          # Check every app against its SizingCaps tag before anything changes
+          # (13 section 5.2). The jq program is the caps check of app-ci.yml.
+          caps='{}'
+          for app in $(jq -r 'keys[]' <<< "$CONTAINER_APPS"); do
+            ca=$(jq -r --arg app "$app" '.[$app]' <<< "$CONTAINER_APPS")
+            az rest --method get --url "$arm/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/containerApps/$ca?api-version=$api" > "$dir/$app.json"
+            tag=$(jq -r '.tags.SizingCaps // empty' "$dir/$app.json")
+            if [ -z "$tag" ]; then
+              echo "::error::$ENVIRONMENT: $ca has no SizingCaps tag"
+              exit 1
+            fi
+            caps=$(jq -c --arg app "$app" --arg tag "$tag" '.[$app] = ($tag | split(";") | map(split("=") | {(.[0]): .[1]}) | add
+              | {cpu: (.cpu | tonumber), memory, min_replicas: (.minreplicas | tonumber), max_replicas: (.maxreplicas | tonumber), profiles: (.profiles | split(","))})' <<< "$caps")
+          done
+          failed=$(jq -r --argjson platform "$platform" '
+            def gi: rtrimstr("Gi") | tonumber;
+            to_entries[] | .key as $env | .value | to_entries[] | .key as $app | .value as $c
+            | if $platform.apps[$app] == null then "\($env): \($app) has no entry under apps in platform.yaml"
+              else ($platform.apps[$app] + ($platform.environments[$env][$app] // {})) as $a
+                | (if $a.cpu > $c.cpu then "\($env): \($app): cpu \($a.cpu) is above the cap \($c.cpu)" else empty end),
+                  (if ($a.memory | gi) > ($c.memory | gi) then "\($env): \($app): memory \($a.memory) is above the cap \($c.memory)" else empty end),
+                  (if $a.min_replicas < $c.min_replicas then "\($env): \($app): min_replicas \($a.min_replicas) is below the cap \($c.min_replicas)" else empty end),
+                  (if $a.max_replicas > $c.max_replicas then "\($env): \($app): max_replicas \($a.max_replicas) is above the cap \($c.max_replicas)" else empty end),
+                  (if ($c.profiles | index($a.profile)) == null then "\($env): \($app): profile \($a.profile) is not one of the caps \($c.profiles | join(", "))" else empty end)
+              end' <<< "{\"$ENVIRONMENT\": $caps}")
+          if [ -n "$failed" ]; then
+            while IFS= read -r line; do echo "::error::$line"; done <<< "$failed"
+            exit 1
+          fi
+
+          # Set each app's images, sizing and profile, as a merge patch that
+          # leaves out the identity and the configuration (secrets, registry,
+          # ingress), and wait for its new revision to become ready. The previous
+          # revision keeps serving until then (11 section 8.3).
+          for app in $(jq -r 'keys[]' <<< "$CONTAINER_APPS"); do
+            ca=$(jq -r --arg app "$app" '.[$app]' <<< "$CONTAINER_APPS")
+            url="$arm/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/containerApps/$ca"
+            sized=$(jq -c --arg env "$ENVIRONMENT" --arg app "$app" '.apps[$app] + (.environments[$env][$app] // {})' <<< "$platform")
+            image=$(jq -r .image <<< "$sized")
+            init=$(jq -r '.init_image // empty' <<< "$sized")
+            jq -c --argjson s "$sized" --arg image "$registry/$image@${digest[$image]}" --arg init "$init" --arg init_image "${init:+$registry/$init@${digest[$init]}}" '
+              .properties.template as $t
+              | {properties: {
+                  workloadProfileName: $s.profile,
+                  template: {
+                    containers: ($t.containers | .[0].image = $image | .[0].resources = {cpu: $s.cpu, memory: $s.memory}),
+                    initContainers: (if $init == "" then [] else [{name: $init, image: $init_image, env: ($t.containers[0].env // [])}] end),
+                    scale: {minReplicas: $s.min_replicas, maxReplicas: $s.max_replicas}
+                  }}}' "$dir/$app.json" > "$dir/$app-patch.json"
+            echo "$ca: $registry/$image@${digest[$image]}, $(jq -r '"\(.profile), cpu \(.cpu), memory \(.memory), replicas \(.min_replicas) to \(.max_replicas)"' <<< "$sized")"
+            az rest --method patch --url "$url?api-version=$api" --body "@$dir/$app-patch.json" --output none
+
+            ready=false
+            for _ in $(seq 60); do
+              sleep 10
+              az rest --method get --url "$url?api-version=$api" > "$dir/$app-now.json"
+              state=$(jq -r .properties.provisioningState "$dir/$app-now.json")
+              latest=$(jq -r .properties.latestRevisionName "$dir/$app-now.json")
+              if [ "$state" = Failed ] || [ "$state" = Canceled ]; then
+                echo "::error::$ENVIRONMENT: $ca: the update ended as $state"
+                exit 1
+              fi
+              [ "$state" = Succeeded ] || continue
+              az rest --method get --url "$url/revisions/$latest?api-version=$api" > "$dir/$app-revision.json"
+              read -r revstate health running <<< "$(jq -r '[.properties.provisioningState, .properties.healthState, .properties.runningState] | @tsv' "$dir/$app-revision.json")"
+              if [ "$revstate" = Failed ] || [ "$health" = Unhealthy ] || [ "$running" = Failed ]; then
+                echo "::error::$ENVIRONMENT: $ca: revision $latest is $revstate, $health, $running; the previous revision keeps serving"
+                exit 1
+              fi
+              if [ "$latest" = "$(jq -r .properties.latestReadyRevisionName "$dir/$app-now.json")" ]; then
+                echo "$ca: revision $latest is ready ($health, $running)"
+                ready=true
+                break
+              fi
+            done
+            if [ "$ready" != true ]; then
+              echo "::error::$ENVIRONMENT: $ca: revision $latest didn't become ready within 10 minutes; the previous revision keeps serving"
+              exit 1
+            fi
+          done
+
+      - name: Report the deployment
+        if: ${{ always() && steps.record.outputs.id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ steps.record.outputs.id }}
+          RESULT: ${{ job.status }}
+        run: |
+          state=failure
+          [ "$RESULT" = success ] && state=success
+          gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$ID/statuses" -f state="$state" \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
+          echo "Deployment $ID of $GITHUB_REPOSITORY: $state"

@@ -11,7 +11,7 @@ This file is the guide for every AI coding tool (Claude Code, Cursor, Codex, …
 | `landing-zone/` | Builds one application landing zone from its `landing-zones/<lz>.yaml` (spec 05). Called once per landing zone by `landing-zones/_root` in `tl-cloud-infrastructure` | `landing-zone/vX.Y.Z` |
 | `stamps/<template>/` | A stamp template, such as `aca-app`, with its generator `generate.ps1`, `stamp.schema.json` and catalog (spec 06) | `<template>/vX.Y.Z`, e.g. `aca-app/v1.0.3` |
 | `blocks/<block>/` | Building blocks the stamp templates use by relative path | Not on their own: with the template that uses them |
-| `.github/workflows/app-*.yml` | The reusable app workflows `app-ci.yml`, `app-deploy.yml`, `app-release.yml` (spec 13 section 9) | `app-workflows/vX.Y.Z`, tested first as `app-workflows/vX.Y.Z-rc.<n>` |
+| `.github/workflows/app-*.yml` | The reusable app workflows `app-ci.yml`, `app-deploy.yml`, `app-release.yml`, `app-promote.yml` (spec 13 section 9) | `app-workflows/vX.Y.Z`, tested first as `app-workflows/vX.Y.Z-rc.<n>` |
 | `images/<image>/` | The platform's own container images, such as `platform-placeholder`; built by their workflow on a tag | `<image>/vX.Y.Z` |
 | `.github/workflows/check.yml` | The required check `check` on every PR | Not released |
 

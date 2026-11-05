@@ -23,7 +23,7 @@ Prepares a release of one module of this repository. The release is a PR; the ta
 | --- | --- |
 | `landing-zone` | `landing-zone/` |
 | `<template>` | `stamps/<template>/` and every `blocks/<block>/` it uses by relative path |
-| `app-workflows` | `.github/workflows/app-ci.yml`, `app-deploy.yml`, `app-release.yml` and the scripts they call |
+| `app-workflows` | `.github/workflows/app-ci.yml`, `app-deploy.yml`, `app-release.yml`, `app-promote.yml` and the scripts they call |
 | `<image>` | `images/<image>/` and its build workflow |
 
 ## prepare

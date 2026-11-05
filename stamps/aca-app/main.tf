@@ -62,12 +62,16 @@ resource "azurerm_resource_group" "this" {
       error_message = "ttl is only for a stamp in a sandbox landing zone (06 section 9)."
     }
     precondition {
-      condition     = !startswith(var.config.environment, "pr") || var.config.ttl != null
+      condition     = !can(regex("^pr[1-9][0-9]*$", var.config.environment)) || var.config.ttl != null
       error_message = "A pr<n> stamp needs a ttl (06 section 9)."
     }
     precondition {
       condition     = alltrue([for h, app in local.catalog_hostnames : contains(local.external_apps, app)])
       error_message = "Every hostname in catalog/tenants.yaml goes to an app of the stamp with ingress: external (07 section 2.2)."
+    }
+    precondition {
+      condition     = local.envtype != "prod" || length(var.alert_action_group_ids) > 0
+      error_message = "A stamp in a prod landing zone needs alert_action_group_ids, from ALERT_ACTION_GROUP_IDS in lz-${var.lz.name}: production never runs without alerts (06 section 6.8)."
     }
     precondition {
       condition     = var.ghcr_pull_token_version != null

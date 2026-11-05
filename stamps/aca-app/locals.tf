@@ -58,12 +58,13 @@ locals {
     subnet_cidr    = var.config.network.subnet_cidr
   }
 
-  # Each app's caps (06 section 6.5). minreplicas is 0 without zone redundancy.
+  # Each app's caps (06 section 6.5). minreplicas is caps.min_replicas, 0 when
+  # not set; zone redundancy, which needs 2, isn't in aca-app v1.x.
   caps = {
     for a in var.config.apps : a.name => {
       cpu          = a.caps.cpu
       memory       = a.caps.memory
-      min_replicas = 0
+      min_replicas = a.caps.min_replicas
       max_replicas = a.caps.max_replicas
       profiles     = coalesce(a.caps.profiles, [a.profile])
     }

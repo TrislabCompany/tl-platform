@@ -26,6 +26,7 @@ variable "config" {
       caps = object({
         cpu          = number
         memory       = string
+        min_replicas = optional(number, 0)
         max_replicas = number
         profiles     = optional(list(string))
       })
@@ -70,7 +71,7 @@ variable "config" {
 
   validation {
     condition     = var.config.data == null
-    error_message = "aca-app/v1.0.0 has no data; aca-app/v1.1.0 adds it (06 section 8)."
+    error_message = "aca-app has no data yet; a later minor release adds it (06 section 8)."
   }
 
   validation {
@@ -131,6 +132,14 @@ variable "config" {
   validation {
     condition     = alltrue([for a in var.config.apps : a.caps.max_replicas >= 1 && a.caps.max_replicas <= 300 && floor(a.caps.max_replicas) == a.caps.max_replicas])
     error_message = "apps[].caps.max_replicas must be 1 to 300 (06 section 3.3)."
+  }
+
+  # The lower replica limit the deploy must keep, 0 by default (scale to
+  # zero). Above 0, an app with ingress in a prod landing zone gets the No
+  # replica alert (06 section 6.8).
+  validation {
+    condition     = alltrue([for a in var.config.apps : a.caps.min_replicas >= 0 && a.caps.min_replicas <= a.caps.max_replicas && floor(a.caps.min_replicas) == a.caps.min_replicas])
+    error_message = "apps[].caps.min_replicas must be a whole number from 0 to max_replicas (06 section 3.3)."
   }
 
   # ghcr-pull and origin-<zone> are the template's own secrets (06 section 6.4).
@@ -224,6 +233,17 @@ variable "origin_certs" {
   default     = {}
   sensitive   = true
   ephemeral   = true
+}
+
+variable "alert_action_group_ids" {
+  description = "The action groups the alert rules of a prod stamp go to, from ALERT_ACTION_GROUP_IDS in lz-<lz>: ag-platform, and the product team's shared mailbox once the catalog has one (06 section 6.8). A prod stamp fails the plan without one."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for id in var.alert_action_group_ids : can(regex("(?i)^/subscriptions/[0-9a-f-]{36}/resourceGroups/[^/]+/providers/microsoft\\.insights/actionGroups/[^/]+$", id))])
+    error_message = "alert_action_group_ids are action group resource IDs."
+  }
 }
 
 variable "ghcr_pull_token_version" {

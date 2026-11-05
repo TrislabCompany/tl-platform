@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/TrislabCompany/tl-platform/stamps/aca-app/stamp.schema.json",
-  "title": "stamp.yaml of aca-app v1.0.0",
-  "description": "06-stamp-templates.md sections 3.1 and 3.3 of tl-cloud-infrastructure. v1.0.0 has the Consumption profile only, no zone redundancy and no backing services (section 8).",
+  "title": "stamp.yaml of aca-app v1.1.0",
+  "description": "06-stamp-templates.md sections 3.1 and 3.3 of tl-cloud-infrastructure. v1.1.0 has the Consumption profile only, no zone redundancy and no backing services (section 8); caps.min_replicas is optional, 0 by default.",
   "type": "object",
   "additionalProperties": false,
   "required": ["template", "version", "lz", "product", "environment", "tenancy", "network", "apps"],
@@ -50,6 +50,7 @@
             "properties": {
               "cpu": { "type": "number", "exclusiveMinimum": 0, "maximum": 4 },
               "memory": { "type": "string", "pattern": "^([1-8]|0\\.[0-9]+|[1-7]\\.[0-9]+)Gi$" },
+              "min_replicas": { "type": "integer", "minimum": 0, "maximum": 300 },
               "max_replicas": { "type": "integer", "minimum": 1, "maximum": 300 },
               "profiles": {
                 "type": "array",

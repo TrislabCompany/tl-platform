@@ -144,6 +144,10 @@ run "shr_web_staging" {
     condition     = module.hostname_bindings.bound == []
     error_message = "no binding without the certificate and the asuid record"
   }
+  assert {
+    condition     = length(azurerm_monitor_metric_alert.restarts) + length(azurerm_monitor_metric_alert.server_errors) + length(azurerm_monitor_metric_alert.no_replica) == 0
+    error_message = "a sandbox stamp has no alert rules (06 section 6.8)"
+  }
 }
 
 # Rule 200 admits the ipv4 list, and only on port 443.

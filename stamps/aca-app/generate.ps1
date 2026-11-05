@@ -94,6 +94,10 @@ variable "ghcr_pull_token" { # from the secret GHCR_PULL_TOKEN in lz-$lz, apply 
   sensitive = true
   ephemeral = true
 }
+variable "alert_action_group_ids" { # from ALERT_ACTION_GROUP_IDS in lz-$lz; a prod stamp fails the plan without one (section 6.8)
+  type    = list(string)
+  default = []
+}
 
 module "stamp" {
   source = "git::https://github.com/TrislabCompany/tl-platform.git//stamps/$template`?ref=$template/$version"
@@ -110,6 +114,7 @@ module "stamp" {
   origin_certs            = var.origin_certs
   ghcr_pull_token_version = var.ghcr_pull_token_version
   ghcr_pull_token         = var.ghcr_pull_token
+  alert_action_group_ids  = var.alert_action_group_ids
 }
 
 output "stamp" { value = module.stamp }

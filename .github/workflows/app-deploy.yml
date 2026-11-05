@@ -9,8 +9,9 @@ name: App deploy
 # app-ci.yml does, pushes it to GHCR as sha-<first 7 characters of the commit>,
 # private like every package on its first push, and attaches its CycloneDX SBOM
 # as an attestation. Then deploys the digests to every dev tier Environment,
-# one job per Environment. The job `deploy` is the same in app-release.yml;
-# change both together. In a template repository every job is skipped.
+# one job per Environment. The job `deploy` is the same in app-release.yml,
+# and its step Deploy in app-promote.yml; change all three together. In a
+# template repository every job is skipped.
 
 on:
   workflow_call:

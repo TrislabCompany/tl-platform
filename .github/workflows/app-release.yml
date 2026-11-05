@@ -10,8 +10,9 @@ name: App release
 # version tag to the same digests, creates the GitHub Release (a pre-release
 # for -rc.<n>) with the SBOMs read back from the images' attestations, and
 # deploys the digests to every release tier Environment, one job per
-# Environment. The job `deploy` is the same in app-deploy.yml; change both
-# together. In a template repository every job is skipped.
+# Environment. The job `deploy` is the same in app-deploy.yml, and its step
+# Deploy in app-promote.yml; change all three together. In a template
+# repository every job is skipped.
 
 on:
   workflow_call:

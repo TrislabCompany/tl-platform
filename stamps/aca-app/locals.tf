@@ -29,6 +29,9 @@ locals {
   # 06 section 3.1, 11 section 2.2.
   app_environment = coalesce(var.config.app_environment, local.customer == null ? var.config.environment : "${local.customer.slug}-${var.config.environment}")
 
+  # 06 section 6.2, ADR 0058.
+  vnet = var.config.network.mode == "vnet"
+
   external_apps = [for a in var.config.apps : a.name if a.ingress == "external"]
 
   # The default hostname goes to the first external app; every other external
@@ -47,8 +50,10 @@ locals {
   } : {}
   hostnames = merge(local.catalog_hostnames, local.derived_hostnames)
 
-  # The fields that can't change once the stamp exists (06 section 3.1).
-  fixed = {
+  # The fields that can't change once the stamp exists (06 section 3.1). A
+  # vnet stamp keeps the map it was created with, so stamps from before
+  # network.mode plan unchanged; a managed one adds the mode.
+  fixed = merge({
     template       = var.config.template
     lz             = var.config.lz
     product        = var.config.product
@@ -56,7 +61,7 @@ locals {
     number         = local.number
     zone_redundant = var.config.zone_redundant
     subnet_cidr    = var.config.network.subnet_cidr
-  }
+  }, local.vnet ? {} : { network_mode = var.config.network.mode })
 
   # Each app's caps (06 section 6.5). minreplicas is caps.min_replicas, 0 when
   # not set; zone redundancy, which needs 2, isn't in aca-app v1.x.

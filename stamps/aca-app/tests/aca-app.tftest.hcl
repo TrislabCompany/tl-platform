@@ -133,7 +133,7 @@ run "shr_web_staging" {
     error_message = "secrets"
   }
   assert {
-    condition     = jsonencode(module.network.rules["other-envtype-in"].source) == jsonencode(["10.16.0.0/12"]) && module.network.rules["other-envtype-out"].destination == "10.16.0.0/12" && jsonencode(module.network.rules["spoke"].source) == jsonencode(["10.32.0.0/20"])
+    condition     = jsonencode(module.network[0].rules["other-envtype-in"].source) == jsonencode(["10.16.0.0/12"]) && module.network[0].rules["other-envtype-out"].destination == "10.16.0.0/12" && jsonencode(module.network[0].rules["spoke"].source) == jsonencode(["10.32.0.0/20"])
     error_message = "isolation rules"
   }
   assert {
@@ -154,7 +154,7 @@ run "shr_web_staging" {
 run "cloudflare_rule" {
   command = plan
   assert {
-    condition     = jsonencode(module.network.rules["cloudflare"].source) == jsonencode(["173.245.48.0/20", "103.21.244.0/22"]) && module.network.rules["cloudflare"].port == "443" && module.network.rules["cloudflare"].priority == 200
+    condition     = jsonencode(module.network[0].rules["cloudflare"].source) == jsonencode(["173.245.48.0/20", "103.21.244.0/22"]) && module.network[0].rules["cloudflare"].port == "443" && module.network[0].rules["cloudflare"].priority == 200
     error_message = "rule 200"
   }
 }
@@ -173,7 +173,7 @@ run "no_external_app_no_rule_200" {
     tenants = [{ name = "corporate-site", customer = "trislab", stamp = "products-sandbox-neu/corporate-site-staging" }]
   }
   assert {
-    condition     = !contains(keys(module.network.rules), "cloudflare")
+    condition     = !contains(keys(module.network[0].rules), "cloudflare")
     error_message = "rule 200"
   }
 }
@@ -228,6 +228,33 @@ run "fixed_field_changed" {
     config = {
       template    = "aca-app", version = "v1.0.0", lz = "products-sandbox-neu", product = "corporate-site"
       environment = "staging", number = "02", tenancy = "dedicated", network = { subnet_cidr = "10.32.0.0/27" }
+      apps = [{
+        name = "web", repo = "trislab-website-corporate-site", profile = "Consumption", ingress = "external", port = 8080
+        caps = { cpu = 0.5, memory = "1Gi", max_replicas = 2 }
+      }]
+    }
+  }
+  expect_failures = [azurerm_resource_group.this]
+}
+
+
+# Switching an existing stamp to network.mode managed is refused: it would
+# recreate the environment (06 section 3.1).
+run "network_mode_is_fixed" {
+  command = plan
+  override_module {
+    target = module.catalog
+    outputs = {
+      folder      = "corporate-site-staging"
+      lz_folder   = "products-sandbox-neu"
+      owners      = [{ slug = "corporate-site", kind = "product", code = "web", state = "active" }]
+      ipam_stamps = { products-sandbox-neu = {} }
+    }
+  }
+  variables {
+    config = {
+      template    = "aca-app", version = "v1.2.0", lz = "products-sandbox-neu", product = "corporate-site"
+      environment = "staging", tenancy = "dedicated", network = { mode = "managed" }
       apps = [{
         name = "web", repo = "trislab-website-corporate-site", profile = "Consumption", ingress = "external", port = 8080
         caps = { cpu = 0.5, memory = "1Gi", max_replicas = 2 }

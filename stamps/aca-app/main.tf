@@ -38,10 +38,14 @@ resource "azurerm_resource_group" "this" {
     }
     precondition {
       condition     = try(module.catalog.ipam_stamps[var.lz.name][module.catalog.folder], null) == var.config.network.subnet_cidr
-      error_message = "network.subnet_cidr must be the range of ${module.catalog.folder} under ${var.lz.name} in catalog/ipam.yaml (06 section 3.1)."
+      error_message = local.vnet ? "network.subnet_cidr must be the range of ${module.catalog.folder} under ${var.lz.name} in catalog/ipam.yaml (06 section 3.1)." : "A stamp with network.mode managed has no range in catalog/ipam.yaml: remove ${module.catalog.folder} under ${var.lz.name} (06 section 6.2)."
     }
     precondition {
-      condition = try(
+      condition     = local.vnet || var.lz.archetype != "regulated"
+      error_message = "A stamp in a regulated landing zone needs network.mode vnet: its traffic goes through the hub (06 section 6.2, ADR 0049)."
+    }
+    precondition {
+      condition = !local.vnet || try(
         tonumber(split("/", var.config.network.subnet_cidr)[1]) <= 27 &&
         tonumber(split("/", var.config.network.subnet_cidr)[1]) >= tonumber(split("/", var.lz.network.spoke_cidr)[1]) &&
         cidrhost("${cidrhost(var.config.network.subnet_cidr, 0)}/${split("/", var.lz.network.spoke_cidr)[1]}", 0) == cidrhost(var.lz.network.spoke_cidr, 0),
@@ -79,14 +83,18 @@ resource "azurerm_resource_group" "this" {
     }
     precondition {
       condition     = terraform_data.fixed.output == local.fixed
-      error_message = "template, lz, product, environment, number, zone_redundant and network.subnet_cidr can't change once the stamp exists; a change means a new stamp (06 section 3.1)."
+      error_message = "template, lz, product, environment, number, zone_redundant, network.mode and network.subnet_cidr can't change once the stamp exists; a change means a new stamp (06 section 3.1)."
     }
   }
 }
 
 # ---- Step 2: network ----------------------------------------------------------
 
+# Only with network.mode vnet. A managed environment runs on Azure's network:
+# no subnet, NSG, load balancer or public IP of the stamp's, and the apps'
+# Cloudflare IP restrictions stay its ingress control (06 section 6.2).
 module "network" {
+  count               = local.vnet ? 1 : 0
   source              = "../../blocks/stamp-network"
   stamp               = local.stamp
   lz_name             = var.lz.name
@@ -98,6 +106,12 @@ module "network" {
   resource_group_name = azurerm_resource_group.this.name
   location            = var.lz.region
   tags                = local.tags
+}
+
+# Stamps from before network.mode keep their subnet and NSG.
+moved {
+  from = module.network
+  to   = module.network[0]
 }
 
 # ---- Step 3: identities -------------------------------------------------------
@@ -150,9 +164,9 @@ resource "azurerm_container_app_environment" "this" {
   name                               = "cae-${local.stamp}"
   resource_group_name                = azurerm_resource_group.this.name
   location                           = var.lz.region
-  infrastructure_subnet_id           = module.network.subnet_id
-  infrastructure_resource_group_name = "rg-${local.stamp}-infra"
-  zone_redundancy_enabled            = false
+  infrastructure_subnet_id           = local.vnet ? module.network[0].subnet_id : null
+  infrastructure_resource_group_name = local.vnet ? "rg-${local.stamp}-infra" : null
+  zone_redundancy_enabled            = local.vnet ? false : null
   logs_destination                   = "azure-monitor"
   tags                               = local.tags
 

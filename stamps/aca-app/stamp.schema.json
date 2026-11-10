@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/TrislabCompany/tl-platform/stamps/aca-app/stamp.schema.json",
-  "title": "stamp.yaml of aca-app v1.1.0",
-  "description": "06-stamp-templates.md sections 3.1 and 3.3 of tl-cloud-infrastructure. v1.1.0 has the Consumption profile only, no zone redundancy and no backing services (section 8); caps.min_replicas is optional, 0 by default.",
+  "title": "stamp.yaml of aca-app v1.2.0",
+  "description": "06-stamp-templates.md sections 3.1 and 3.3 of tl-cloud-infrastructure. v1.1.0 has the Consumption profile only, no zone redundancy and no backing services (section 8); caps.min_replicas is optional, 0 by default; network.mode is vnet (a subnet of the spoke, the default) or managed (no subnet: ADR 0058).",
   "type": "object",
   "additionalProperties": false,
   "required": ["template", "version", "lz", "product", "environment", "tenancy", "network", "apps"],
@@ -18,10 +18,13 @@
     "network": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["subnet_cidr"],
       "properties": {
+        "mode": { "enum": ["vnet", "managed"], "default": "vnet" },
         "subnet_cidr": { "type": "string", "pattern": "^10\\.([0-9]{1,3}\\.){2}[0-9]{1,3}/(1[2-9]|2[0-7])$" }
-      }
+      },
+      "if": { "properties": { "mode": { "const": "managed" } }, "required": ["mode"] },
+      "then": { "not": { "required": ["subnet_cidr"] } },
+      "else": { "required": ["subnet_cidr"] }
     },
     "app_environment": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
     "ttl": { "type": "string", "pattern": "^[1-9][0-9]*[hd]$" },

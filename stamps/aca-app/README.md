@@ -10,7 +10,16 @@ The local module `catalog/` reads what the template needs from the repository be
 
 ## What it creates
 
-Steps 1 to 6 of section 6.1, in `rg-<stamp>`: the subnet and NSG (`blocks/stamp-network`), `id-<stamp>-workload` and `id-<stamp>-appdeploy` (`blocks/app-deploy-identity`), the secrets in the landing zone's Key Vault (`blocks/kv-secret-access`), `cae-<stamp>`, one `ca-<stamp>-<app>` per app on the placeholder image `platform-placeholder:1.0.0`, pinned by digest, and the hostname bindings (`blocks/hostname-bindings`).
+Steps 1 to 6 of section 6.1, in `rg-<stamp>`: with `network.mode: vnet`, the default, the subnet and NSG (`blocks/stamp-network`); `id-<stamp>-workload` and `id-<stamp>-appdeploy` (`blocks/app-deploy-identity`), the secrets in the landing zone's Key Vault (`blocks/kv-secret-access`), `cae-<stamp>`, one `ca-<stamp>-<app>` per app on the placeholder image `platform-placeholder:1.0.0`, pinned by digest, and the hostname bindings (`blocks/hostname-bindings`).
+
+### `network.mode`
+
+| Mode | The environment | Fixed cost of the stamp | Use it for |
+|---|---|---|---|
+| `vnet` (default) | Runs in `network.subnet_cidr`, its range in `catalog/ipam.yaml`, with the stamp's NSG. Azure adds a Standard load balancer and a public IP in `rg-<stamp>-infra` | About EUR 20 a month for the load balancer and the IP, even with every app scaled to zero | A stamp in a `regulated` landing zone, with `zone_redundant: true`, or that reaches private endpoints or a private database through the spoke |
+| `managed` | Runs on Azure's network: no subnet, NSG, ipam range, load balancer or public IP of the stamp's, and Azure names its own infrastructure resource group | None of its own: an app scaled to zero costs nothing | Every other stamp, such as a website or an app whose backing services are public SaaS |
+
+In both modes an app with `ingress: external` admits only Cloudflare's `ipv4` ranges, as IP restrictions on its ingress (ADR 0027): the NSG never filtered public traffic to the environment, so `managed` keeps the same ingress control. The mode is fixed once the stamp exists; changing it means a new stamp (06 section 3.1). The plan refuses `managed` with a `subnet_cidr`, with a range left in `catalog/ipam.yaml`, in a `regulated` landing zone, or with `zone_redundant: true`.
 
 In a prod landing zone, also the alert rules of section 6.8, sent to every action group in `alert_action_group_ids` (`ag-platform`), and a prod stamp fails the plan without one:
 
@@ -40,6 +49,7 @@ In a prod landing zone, also the alert rules of section 6.8, sent to every actio
 
 ## Changes
 
+- `v1.2.0`: the new optional `network.mode`, `vnet` by default or `managed` (ADR 0058 in `tl-cloud-infrastructure`). A `managed` stamp has no subnet, NSG or range in `catalog/ipam.yaml`, so Azure creates no load balancer or public IP for it, about EUR 20 a month less per stamp; its apps keep the Cloudflare IP restrictions. `managed` is refused in a `regulated` landing zone, with `zone_redundant: true`, with a `subnet_cidr` or with an ipam range, and the mode joins the fields that can't change. A stamp without `network.mode` plans as before: a `moved` block keeps its subnet and NSG at `module.network[0]`.
 - `v1.1.0`: the alert rules of section 6.8 in a prod landing zone, sent to the new input `alert_action_group_ids`, which the generator passes from `ALERT_ACTION_GROUP_IDS` in `lz-<lz>`; a prod stamp fails the plan without one. The new optional `caps.min_replicas`, 0 by default, is the lower replica limit the deploy must keep, and above 0 adds the No replica rule. A `pr<n>` check no longer matches `prod`, which failed every prod stamp. A sandbox stamp plans as before; a stamp that takes this version regenerates its `main.tf`.
 
 - `v1.0.3`: every app with `ingress: external` admits only the `ipv4` ranges of `cloudflare_ips`, as IP restrictions on its ingress: the NSG doesn't filter traffic to the environment's public address (ADR 0027).

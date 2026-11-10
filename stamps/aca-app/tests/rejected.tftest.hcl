@@ -357,3 +357,92 @@ run "hostname_to_internal_app" {
   expect_failures = [azurerm_resource_group.this]
 }
 
+
+run "managed_with_subnet" {
+  command = plan
+  variables {
+    config = {
+      template    = "aca-app", version = "v1.2.0", lz = "products-sandbox-neu", product = "corporate-site"
+      environment = "staging", tenancy = "dedicated", network = { mode = "managed", subnet_cidr = "10.32.0.0/27" }
+      apps = [{
+        name = "web", repo = "trislab-website-corporate-site", profile = "Consumption", ingress = "external", port = 8080
+        caps = { cpu = 0.5, memory = "1Gi", max_replicas = 2 }
+      }]
+    }
+  }
+  expect_failures = [var.config]
+}
+
+run "vnet_without_subnet" {
+  command = plan
+  variables {
+    config = {
+      template    = "aca-app", version = "v1.2.0", lz = "products-sandbox-neu", product = "corporate-site"
+      environment = "staging", tenancy = "dedicated", network = {}
+      apps = [{
+        name = "web", repo = "trislab-website-corporate-site", profile = "Consumption", ingress = "external", port = 8080
+        caps = { cpu = 0.5, memory = "1Gi", max_replicas = 2 }
+      }]
+    }
+  }
+  expect_failures = [var.config]
+}
+
+run "unknown_network_mode" {
+  command = plan
+  variables {
+    config = {
+      template    = "aca-app", version = "v1.2.0", lz = "products-sandbox-neu", product = "corporate-site"
+      environment = "staging", tenancy = "dedicated", network = { mode = "private" }
+      apps = [{
+        name = "web", repo = "trislab-website-corporate-site", profile = "Consumption", ingress = "external", port = 8080
+        caps = { cpu = 0.5, memory = "1Gi", max_replicas = 2 }
+      }]
+    }
+  }
+  expect_failures = [var.config]
+}
+
+# The folder still has its range in catalog/ipam.yaml.
+run "managed_with_ipam_range" {
+  command = plan
+  variables {
+    config = {
+      template    = "aca-app", version = "v1.2.0", lz = "products-sandbox-neu", product = "corporate-site"
+      environment = "staging", tenancy = "dedicated", network = { mode = "managed" }
+      apps = [{
+        name = "web", repo = "trislab-website-corporate-site", profile = "Consumption", ingress = "external", port = 8080
+        caps = { cpu = 0.5, memory = "1Gi", max_replicas = 2 }
+      }]
+    }
+  }
+  expect_failures = [azurerm_resource_group.this]
+}
+
+run "managed_in_regulated_lz" {
+  command = plan
+  override_module {
+    target = module.catalog
+    outputs = {
+      folder      = "corporate-site-staging"
+      lz_folder   = "products-sandbox-neu"
+      owners      = [{ slug = "corporate-site", kind = "product", code = "web", state = "active" }]
+      ipam_stamps = { products-sandbox-neu = {} }
+    }
+  }
+  variables {
+    config = {
+      template    = "aca-app", version = "v1.2.0", lz = "products-sandbox-neu", product = "corporate-site"
+      environment = "staging", tenancy = "dedicated", network = { mode = "managed" }
+      apps = [{
+        name = "web", repo = "trislab-website-corporate-site", profile = "Consumption", ingress = "external", port = 8080
+        caps = { cpu = 0.5, memory = "1Gi", max_replicas = 2 }
+      }]
+    }
+    lz = {
+      name   = "products-sandbox-neu", state = "active", archetype = "regulated", owner = { products = true }
+      region = "northeurope", network = { spoke_cidr = "10.32.0.0/20" }
+    }
+  }
+  expect_failures = [azurerm_resource_group.this]
+}

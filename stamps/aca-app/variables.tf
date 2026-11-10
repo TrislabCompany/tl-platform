@@ -15,7 +15,8 @@ variable "config" {
     app_environment = optional(string)
     ttl             = optional(string)
     network = object({
-      subnet_cidr = string
+      mode        = optional(string, "vnet")
+      subnet_cidr = optional(string)
     })
     apps = list(object({
       name    = string
@@ -67,6 +68,25 @@ variable "config" {
   validation {
     condition     = !var.config.zone_redundant && var.config.workload_profiles == null
     error_message = "aca-app/v1.0.0 has no zone_redundant: true and no workload_profiles (06 section 8)."
+  }
+
+  # vnet: the environment runs in its own subnet of the landing zone's spoke.
+  # managed: Azure's own network, with no subnet, load balancer or public IP
+  # of the stamp's (06 section 6.2, ADR 0058).
+  validation {
+    condition     = contains(["vnet", "managed"], var.config.network.mode)
+    error_message = "network.mode must be vnet or managed (06 section 6.2)."
+  }
+
+  validation {
+    condition     = var.config.network.mode == "vnet" ? var.config.network.subnet_cidr != null : var.config.network.subnet_cidr == null
+    error_message = "network.subnet_cidr is required with network.mode vnet and not allowed with managed (06 section 6.2)."
+  }
+
+  # Container Apps zone redundancy needs a subnet of our own.
+  validation {
+    condition     = var.config.network.mode == "vnet" || !var.config.zone_redundant
+    error_message = "zone_redundant: true needs network.mode vnet (06 section 5)."
   }
 
   validation {

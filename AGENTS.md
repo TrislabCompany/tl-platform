@@ -14,13 +14,31 @@ This file is the guide for every AI coding tool (Claude Code, Cursor, Codex, …
 | `.github/workflows/app-*.yml` | The reusable app workflows `app-ci.yml`, `app-deploy.yml`, `app-release.yml`, `app-promote.yml` (spec 13 section 9) | `app-workflows/vX.Y.Z`, tested first as `app-workflows/vX.Y.Z-rc.<n>` |
 | `images/<image>/` | The platform's own container images, such as `platform-placeholder`; built by their workflow on a tag | `<image>/vX.Y.Z` |
 | `.github/workflows/check.yml` | The required check `check` on every PR | Not released |
+| `.claude/rules/` | The coding rules, loaded by path (below) | Not released |
 | `.agents/skills/`, `.claude/` | The skills below, their Claude Code pointers, and `.claude/settings.json`, which denies creating or pushing tags, `tofu apply` and signing in | Not released |
 
 Each module's `README.md` ends with a **Changes** section: one entry per release, newest first.
 
+## Coding rules
+
+The rules for writing code are in `.claude/rules/`. Each has `paths:` front matter, so Claude Code loads it when you touch a matching file; other tools: read the rule before working in that area. Each rule says which check enforces it; the prose is what review has to catch.
+
+| Working on… | Read |
+| --- | --- |
+| Any `.tf` file: module layout, variables, types, names, `for_each`, comments | `coding-hcl.md` |
+| `tests/*.tftest.hcl`: scenarios, rejected cases, mocks | `testing.md` |
+| `.github/`: workflows, pins, permissions, logging in a run, scripts | `workflows.md` |
+| Inputs, outputs, schemas and the app workflows' interface: what a consumer relies on | `contracts.md` |
+
+## Git and review
+
+- Branch from `main` with a short kebab-case topic; a release branch is `<module>-v<x.y.z>` (`release-module` skill). One change per PR; a workflow change goes in its own PR.
+- The PR title is an imperative plain sentence of 72 characters or fewer, a release `<module> vX.Y.Z`; it becomes the squash commit.
+- A PR merges with the check `check` green and one CODEOWNERS approval (`devops`), never your own. The author resolves the threads.
+- A review checks: the consumer's view (`contracts.md`: is this a major?), a rejected case for each new limit, pins, permissions, the README's Changes entry, no secrets or customer names.
+
 ## Rules
 
-- **Every change is a PR** to `main`: squash merge, one CODEOWNERS approval (`devops`), and the check `check` green.
 - **Tags.** A release tag is `<module>/v<major>.<minor>.<patch>`, where `<module>` is the folder's last path segment. Only an organization owner creates one, on the merge commit of a merged PR. A tag is never moved, deleted or reused, a deleted rc included; a fix is a new version. Never tag `v*`.
 - **Semantic versioning** by what a consumer must do:
   - stamp template (spec 06 section 8): major when a stamp needs a `stamp.yaml` change or the plan recreates a resource that holds data or traffic; minor for new optional fields or resources; patch for a fix with no interface change;

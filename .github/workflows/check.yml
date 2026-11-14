@@ -2,7 +2,8 @@ name: Check
 
 # Checks every module on a PR, offline: tofu fmt, then init, validate and, where
 # a tests/ folder exists, tofu test with mock providers, in each folder with a
-# versions.tf; then actionlint on the workflows. Nothing signs in anywhere.
+# versions.tf; then actionlint on the workflows, and the skill pointers.
+# Nothing signs in anywhere.
 #
 # The job `check` is the required check on main (step A0 of roadmap phase 4 in
 # tl-cloud-infrastructure).
@@ -58,3 +59,6 @@ jobs:
 
       - name: Lint the workflows
         run: actionlint -no-color
+
+      - name: Skill pointers
+        run: python3 .github/scripts/check-skills.py

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git rebase *)",
+      "Bash(gh pr *)",
+      "Bash(python3 .github/scripts/check-skills.py)"
+    ],
+    "deny": [
+      "Bash(git tag *)",
+      "Bash(git push * --tags*)",
+      "Bash(git push *refs/tags/*)",
+      "Bash(gh release create *)",
+      "Bash(tofu apply*)",
+      "Bash(tofu destroy*)",
+      "Bash(az login*)",
+      "Bash(gcloud auth login*)"
+    ]
+  }
+}

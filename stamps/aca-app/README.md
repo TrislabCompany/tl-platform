@@ -29,6 +29,50 @@ In a prod landing zone, also the alert rules of section 6.8, sent to every actio
 | `<stamp>-<app>-server-errors` | Every app with ingress | 5 or more requests are answered with 5xx in 15 minutes. Azure Monitor can't divide one metric by another, so the 5 per cent of section 6.8 waits for the observability platform app, and 15 minutes is the nearest metric alert window to 10 |
 | `<stamp>-<app>-no-replica` | Every app with ingress and `caps.min_replicas` above 0 | It has no running replica for 5 minutes. The deploy refuses a `min_replicas` below the caps, so only the caps promise a lower limit above 0 |
 
+## Logs
+
+Every app writes its logs as one JSON object per line on standard output, never to files (ADR 0062 in `tl-cloud-infrastructure`). Azure Monitor collects the lines into `ContainerAppConsoleLogs_CL` in the landing zone's Log Analytics workspace and keeps them for 30 days (section 6.8). `tl-template-saas` and `tl-template-webapp` write this format out of the box.
+
+| Field | Content |
+|---|---|
+| `timestamp` | UTC, ISO 8601 with milliseconds |
+| `level` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical` |
+| `message`, `messageTemplate` | The rendered message, and its template so lines of one kind group together |
+| `category` | The logger name |
+| `trace_id`, `span_id` | The W3C ids of the current request or job |
+| `environment`, `stamp` | `PLATFORM_ENVIRONMENT` and `PLATFORM_STAMP`, which this template sets on every app |
+| `version` | The app's build version, which the app reads from its own build. The image is built once per commit and tagged at release, so the template passes no version to the app |
+| `tenant` | The tenant id, when the request has one |
+| `exception` | Type, message and stack trace, on errors |
+
+The rules:
+
+- **Levels.** `Error` means a person must act; `Warning` is degraded but handled; `Information` is one line per meaningful step, never per item in a loop. `Debug` and `Trace` are off outside `local`. Health probes write no `Information` line.
+- **Correlation.** The app accepts the W3C `traceparent` header and returns the trace id as `X-Correlation-ID`, and as `traceId` in every ProblemDetails response. Support quotes it; the query below finds the request from it.
+- **Never logged.** Secrets, tokens, connection strings, request and response bodies, e-mail addresses, names, phone numbers and IP addresses. Log the id instead.
+- **Traces and metrics.** OpenTelemetry, exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. This template doesn't set it yet; the observability platform app brings a collector (roadmap phase 17).
+
+Every line of one request, across the apps of a landing zone:
+
+```kusto
+ContainerAppConsoleLogs_CL
+| extend l = parse_json(Log_s)
+| where tostring(l.trace_id) == "<trace id>"
+| project TimeGenerated, ContainerAppName_s, level = tostring(l.level), message = tostring(l.message)
+| order by TimeGenerated asc
+```
+
+The errors of the last day, by stamp and environment:
+
+```kusto
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(1d)
+| extend l = parse_json(Log_s)
+| where tostring(l.level) in ("Error", "Critical")
+| summarize errors = count() by stamp = tostring(l.stamp), environment = tostring(l.environment), template = tostring(l.messageTemplate)
+| order by errors desc
+```
+
 ## Files
 
 | File | What it is |

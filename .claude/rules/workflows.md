@@ -5,7 +5,7 @@ paths:
 
 # GitHub Actions workflows and scripts
 
-Checked by: `actionlint` (`check.yml`). The pin rule is written here and in AGENTS.md; review checks it.
+Checked by: `actionlint`, `.github/scripts/check-pins.py` and `shellcheck` (`check.yml`).
 
 ## Workflows
 

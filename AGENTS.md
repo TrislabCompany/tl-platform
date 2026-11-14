@@ -44,6 +44,8 @@ tofu fmt -check -diff -recursive
 tofu -chdir=<dir> init -backend=false && tofu -chdir=<dir> validate
 tofu -chdir=<dir> test          # where a tests/ folder exists
 actionlint
+python3 .github/scripts/check-pins.py      # every uses: pinned by full SHA, with the version in a comment
+shellcheck .github/scripts/*.sh
 python3 .github/scripts/check-skills.py
 ```
 

@@ -14,6 +14,7 @@ This file is the guide for every AI coding tool (Claude Code, Cursor, Codex, …
 | `.github/workflows/app-*.yml` | The reusable app workflows `app-ci.yml`, `app-deploy.yml`, `app-release.yml`, `app-promote.yml` (spec 13 section 9) | `app-workflows/vX.Y.Z`, tested first as `app-workflows/vX.Y.Z-rc.<n>` |
 | `images/<image>/` | The platform's own container images, such as `platform-placeholder`; built by their workflow on a tag | `<image>/vX.Y.Z` |
 | `.github/workflows/check.yml` | The required check `check` on every PR | Not released |
+| `.agents/skills/`, `.claude/` | The skills below, their Claude Code pointers, and `.claude/settings.json`, which denies creating or pushing tags, `tofu apply` and signing in | Not released |
 
 Each module's `README.md` ends with a **Changes** section: one entry per release, newest first.
 
@@ -28,6 +29,10 @@ Each module's `README.md` ends with a **Changes** section: one entry per release
 - **Nothing signs in from this repository.** No cloud credentials, no `tofu apply`, no state. The modules are tested offline with mock providers.
 - **The repository is public.** No customer names, secrets, subscription IDs or internal URLs in code, docs, PRs or commits.
 - **Pins.** Actions are pinned by full commit SHA with the version in a comment. Images are pinned by version and digest.
+- **No AI attribution.** No `Co-Authored-By:` trailer and no "generated with" line in a commit, PR title, description or comment. Commit with your Trislab account.
+- **Writing.** Write "section N", never "§", and a change set by its full name (`CS-NN-short-description`), never the bare number.
+- **The spec is local.** Spec v2 (`docs/spec/v2/` in `tl-cloud-infrastructure`) is git-ignored on purpose: never commit, push or quote it in a PR.
+- **Startup phase.** Build only what the pilots need; defer the rest, and name the trigger that brings it back.
 
 ## Checks
 
@@ -39,11 +44,12 @@ tofu fmt -check -diff -recursive
 tofu -chdir=<dir> init -backend=false && tofu -chdir=<dir> validate
 tofu -chdir=<dir> test          # where a tests/ folder exists
 actionlint
+python3 .github/scripts/check-skills.py
 ```
 
 ## Skills
 
-Skills live only in `.agents/skills/<name>/SKILL.md`. When a task matches a skill, read that file and follow it.
+Skills live only in `.agents/skills/<name>/SKILL.md`. When a task matches a skill, read that file and follow it. Claude Code finds skills only in `.claude/skills/`, so each skill also has a pointer `.claude/skills/<name>/SKILL.md`, with the same front matter and a body that sends the agent to the real file. Add one with every new skill; `check` fails without it (`.github/scripts/check-skills.py`).
 
 | Skill | Use when |
 | --- | --- |

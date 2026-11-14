@@ -14,7 +14,7 @@ This file is the guide for every AI coding tool (Claude Code, Cursor, Codex, …
 | `.github/workflows/app-*.yml` | The reusable app workflows `app-ci.yml`, `app-deploy.yml`, `app-release.yml`, `app-promote.yml` (spec 13 section 9) | `app-workflows/vX.Y.Z`, tested first as `app-workflows/vX.Y.Z-rc.<n>` |
 | `images/<image>/` | The platform's own container images, such as `platform-placeholder`; built by their workflow on a tag | `<image>/vX.Y.Z` |
 | `.github/workflows/check.yml` | The required check `check` on every PR | Not released |
-| `.agents/skills/`, `.claude/` | The skills below, their Claude Code pointers, and `.claude/settings.json`, which denies tagging, `tofu apply` and signing in | Not released |
+| `.agents/skills/`, `.claude/` | The skills below, their Claude Code pointers, and `.claude/settings.json`, which denies creating or pushing tags, `tofu apply` and signing in | Not released |
 
 Each module's `README.md` ends with a **Changes** section: one entry per release, newest first.
 

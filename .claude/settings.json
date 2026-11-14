@@ -7,8 +7,16 @@
       "Bash(python3 .github/scripts/check-skills.py)"
     ],
     "deny": [
-      "Bash(git tag *)",
+      "Bash(git tag -a*)",
+      "Bash(git tag -s*)",
+      "Bash(git tag -f*)",
+      "Bash(git tag -d*)",
+      "Bash(git tag --annotate*)",
+      "Bash(git tag --sign*)",
+      "Bash(git tag --force*)",
+      "Bash(git tag --delete*)",
       "Bash(git push * --tags*)",
+      "Bash(git push * --follow-tags*)",
       "Bash(git push *refs/tags/*)",
       "Bash(gh release create *)",
       "Bash(tofu apply*)",

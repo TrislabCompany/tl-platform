@@ -4,6 +4,29 @@
 
 This file is the guide for every AI coding tool (Claude Code, Cursor, Codex, …). `CLAUDE.md` only imports it. The platform spec (spec v2) lives in `tl-cloud-infrastructure` under `docs/spec/v2/` and is not published; where it is named below, ask a member of `devops` for it when you don't have the local clone.
 
+## Role
+
+The same block starts the `AGENTS.md` of every Trislab repository, so an agent in any of them knows where a change belongs.
+
+- **For:** the versioned building parts that `tl-cloud-infrastructure` and the app repositories pin by tag.
+- **Contains:**
+  - the `landing-zone` module;
+  - the stamp templates, such as `aca-app`, with their building blocks and generators;
+  - the reusable app workflows `app-ci`, `app-deploy`, `app-release` and `app-promote`;
+  - the platform's own images.
+- **Never contains:** live state or credentials; anything applied from here; framework or product code; customer names.
+- **A change goes elsewhere when it is:**
+  - using a module (a landing zone, a stamp, a hostname, a repository, an Environment): `tl-cloud-infrastructure`;
+  - a framework building block or reusable module: `tl-framework` (today `tl-template-saas`);
+  - starter scaffolding: `tl-product-saas` (not created yet), `tl-product-webapp` (today `tl-template-webapp`) or `tl-template-website`;
+  - a product's own code: its product repository;
+  - a product idea, plan, decision or hand-off plan: `tl-product-ideas` (private).
+- **Released as:** a tag `<module>/vX.Y.Z` per module, which an organization owner creates on the merge commit (see Rules).
+- **Skills:** `.agents/skills/`, listed under [Skills](#skills).
+- **Scripts:** each stamp template's `generate.ps1`, and the commands under [Checks](#checks).
+  - Add a script when the same kind of work comes back and a script makes it faster and cheaper in tokens. Name it here, and in the skill that uses it. Write none for one-off work.
+  - A script prints a summary and the errors, not a dump.
+
 ## Repository map
 
 | Path | What | Released as |

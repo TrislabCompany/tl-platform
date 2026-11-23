@@ -1,0 +1,75 @@
+Trislab Proprietary License
+
+Copyright (c) 2026 Trislab d.o.o., Ankaranska cesta 7b, 6000 Koper, Slovenia.
+All rights reserved.
+
+This repository, its source code, its documentation, its configuration and every package,
+image or other build made from it (together, "the Software") belong to Trislab d.o.o.
+("Trislab"). The Software is not open source. That its source code can be read publicly
+grants no licence to it. Every right that this licence does not expressly grant is
+reserved to Trislab.
+
+1. Permitted use. Only Trislab, and the employees and contractors Trislab authorises,
+   may use, copy and modify the Software, and only to build, run and maintain Trislab's
+   own products and the applications Trislab delivers.
+
+2. Delivered applications. A client of Trislab may use an application that Trislab built
+   on the Software, together with the parts of the Software that application contains,
+   only as a written agreement with Trislab allows, and only while it does. Where such an
+   agreement sets other terms for the Software or a part of it, that agreement prevails
+   between Trislab and that client.
+
+3. Everything else is prohibited. Except as sections 1 and 2 allow, no one may:
+   (a) use, run, build, deploy, copy, modify, merge, publish, distribute, sublicense,
+       sell, rent, lease or lend the Software or any part of it;
+   (b) make it available to anyone else, in source or compiled form, as packages, as
+       container images or as a hosted service;
+   (c) create works derived from it, or copy its structure, design or substantial parts
+       of it into other software;
+   (d) use it, or any part of it, to train, fine-tune or evaluate machine-learning or
+       artificial-intelligence models, or include it in a dataset for them;
+   (e) remove or change this notice or any other copyright notice in the Software.
+
+4. Public hosting. Where the Software is hosted publicly, viewing it, and forking it within
+   the hosting service as that service's terms require, grant no right beyond those terms.
+   Cloning or downloading the Software grants no right to use it. A copy or fork may not
+   be used, built, deployed or distributed.
+
+5. Contributions. Whoever submits a contribution to the Software (a change, a pull request,
+   an issue, a comment or any other material) transfers to Trislab, to the extent the law
+   allows, all economic rights in it, exclusively, for the whole term of protection,
+   worldwide and without payment. Where a right cannot be transferred, the contributor
+   grants Trislab an exclusive, irrevocable, worldwide and royalty-free licence to use the
+   contribution in every way, with the right to sublicense it. A written agreement between
+   Trislab and the contributor that covers the contribution prevails over this section.
+
+6. Material of others. The Software contains material that belongs to others: open-source
+   software, listed with its licence in THIRD-PARTY-NOTICES.md where the repository has
+   that file; the dependencies it declares; and the names, logos, trademarks, texts and
+   images of Trislab's clients and of third parties. Each keeps its owner's rights and its
+   own licence. This licence covers Trislab's own work and changes. It does not limit the
+   rights anyone has in that material under its own licence, and grants no right to it.
+
+7. Trademarks. This licence grants no right to the names, logos or trademarks of Trislab.
+
+8. Termination and enforcement. Any use that breaks this licence ends, at once and without
+   notice, every right to use the Software. Whoever breaks it must stop using the Software
+   and destroy every copy they hold. Trislab may enforce its rights by every remedy the
+   law provides, including an injunction and damages.
+
+9. No warranty. TO THE EXTENT THE APPLICABLE LAW ALLOWS, THE SOFTWARE IS PROVIDED "AS IS",
+   WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+   WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT, AND
+   IN NO EVENT SHALL TRISLAB BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
+   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF IT.
+
+10. Governing law and courts. This licence is governed by the law of the Republic of
+    Slovenia, without its conflict-of-law rules. The competent court in Koper, Slovenia,
+    has jurisdiction over every dispute arising from it or from the use of the Software.
+    Trislab may also bring a claim before any other court that has jurisdiction.
+
+11. Severability. If a provision of this licence is held invalid or unenforceable, the
+    others stay in force, and the provision is replaced by the valid one closest to its
+    purpose.
+
+For a licence, write to info@trislab.com.

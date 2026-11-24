@@ -7,6 +7,7 @@ name: App CI
 #
 # Checks platform.yaml against the schema below and the rules a schema can't
 # say, and its values against the caps in the repository variable SIZING_CAPS;
+# skips that caps check with a notice while SIZING_CAPS is {} (no stamp yet);
 # checks .trivyignore, builds every image in platform.yaml, runs the caller's
 # test command, and scans each image with Trivy. Pushes nothing and signs in
 # nowhere. The schema lives here, not in a file, because a called workflow
@@ -206,21 +207,27 @@ jobs:
 
       # SIZING_CAPS is JSON, Environment -> app -> caps, written by global/github
       # in tl-cloud-infrastructure (11-onboarding.md section 4.3). A template
-      # deploys nowhere and has none; anywhere else an empty one fails, so no
-      # PR passes unchecked (13 section 5.2). The same jq program checks the
+      # deploys nowhere and has none. A repository with no stamp yet gets {}
+      # from global/github, so the check is skipped with a notice until its
+      # first stamp. A missing variable still fails, so no PR passes unchecked
+      # (13 section 5.2). The same jq program checks the
       # SizingCaps tag before each deploy in app-deploy.yml and app-release.yml.
       - name: Check the sizing caps
         env:
           SIZING_CAPS: ${{ vars.SIZING_CAPS }}
           IS_TEMPLATE: ${{ github.event.repository.is_template }}
         run: |
-          if [ -z "$SIZING_CAPS" ] || [ "$(jq length <<< "$SIZING_CAPS")" = 0 ]; then
+          if [ -z "$SIZING_CAPS" ]; then
             if [ "$IS_TEMPLATE" = true ]; then
               echo "::notice::SIZING_CAPS is empty in a template repository, so the caps check is skipped"
               exit 0
             fi
-            echo "::error::The repository variable SIZING_CAPS is empty or missing, so platform.yaml can't be checked against the caps. global/github writes it for every repository a stamp deploys from"
+            echo "::error::The repository variable SIZING_CAPS is missing, so platform.yaml can't be checked against the caps. global/github writes it for every repository it manages"
             exit 1
+          fi
+          if [ "$(jq length <<< "$SIZING_CAPS")" = 0 ]; then
+            echo "::notice::SIZING_CAPS is {}: the repository has no stamp yet, so the caps check is skipped until its first one"
+            exit 0
           fi
           platform=$(yq -o json platform.yaml)
           failed=$(jq -r --argjson platform "$platform" '

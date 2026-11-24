@@ -12,7 +12,9 @@ name: App release
 # deploys the digests to every release tier Environment, one job per
 # Environment. The job `deploy` is the same in app-deploy.yml, and its step
 # Deploy in app-promote.yml; change all three together. In a template
-# repository every job is skipped.
+# repository every job is skipped. In a repository with no Environment yet
+# (no stamp), app-deploy.yml pushed no images, so nothing is released either:
+# the run is green with a notice.
 
 on:
   workflow_call:
@@ -26,7 +28,8 @@ env:
 jobs:
   release:
     name: release
-    if: ${{ !github.event.repository.is_template }}
+    needs: environments
+    if: ${{ needs.environments.outputs.any == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -123,7 +126,8 @@ jobs:
           fi
 
   # The tier of an Environment is the last part of its name
-  # (11-onboarding.md sections 8.1 and 8.3).
+  # (11-onboarding.md sections 8.1 and 8.3). `any` is false while the
+  # repository has no Environment at all.
   environments:
     name: environments
     if: ${{ !github.event.repository.is_template }}
@@ -132,22 +136,29 @@ jobs:
       actions: read
     outputs:
       names: ${{ steps.list.outputs.names }}
+      any: ${{ steps.list.outputs.any }}
     steps:
       - name: List the Environments of the tier
         id: list
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          names=$(gh api "repos/$GITHUB_REPOSITORY/environments" --paginate --jq '.environments[].name' | jq -Rnc --arg tier "$TIER" '
+          all=$(gh api "repos/$GITHUB_REPOSITORY/environments" --paginate --jq '.environments[].name')
+          if [ -z "$all" ]; then
+            echo "::notice::The repository has no Environment yet (no stamp), so app-deploy.yml pushed no images and nothing is released"
+            { echo "names=[]"; echo "any=false"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          names=$(jq -Rnc --arg tier "$TIER" '
             def tier: (split("-") | last) as $l
               | if $l == "dev" then "dev"
                 elif ($l | IN("test", "staging", "uat", "perf", "demo")) then "release"
                 elif $l == "prod" then "prod"
                 elif ($l | test("^pr[0-9]+$")) then "preview"
                 else "none" end;
-            [inputs | select(tier == $tier)]')
+            [inputs | select(tier == $tier)]' <<< "$all")
           echo "Environments of the $TIER tier: $names"
-          echo "names=$names" >> "$GITHUB_OUTPUT"
+          { echo "names=$names"; echo "any=true"; } >> "$GITHUB_OUTPUT"
 
   # Same as the job `deploy` of app-deploy.yml. Signs in as id-<stamp>-appdeploy
   # and changes only the images, the sizing and the profile of the apps in

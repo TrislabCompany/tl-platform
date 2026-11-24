@@ -43,7 +43,7 @@ Prepares a release of one module of this repository. The release is a PR; the ta
 
 1. Check the release PR is merged, and take its merge commit on `origin/main` (full SHA, never local `HEAD`).
 2. Check the `check` run of that PR passed, and the tag still doesn't exist.
-3. **`app-workflows`:** the first tag is `app-workflows/vX.Y.Z-rc.1` on that commit. It is tested in the canary `trislab-website-corporate-site`: a normal PR there pins its callers to the rc; once merged, its deploy runs, and a version tag releases with it. Only when both work does the same commit get `app-workflows/vX.Y.Z`. A failed rc is fixed by a new PR and the next rc, never a moved tag.
+3. **`app-workflows`:** the first tag is `app-workflows/vX.Y.Z-rc.1` on that commit. It is tested in the canary `tl-product-webapp`, the webapp starter: a normal PR there pins its callers to the rc and must pass `ci / ci`; once merged, its deploy run must be green. Only when both work does the same commit get `app-workflows/vX.Y.Z`. Until the starter has a stamp, its deploy run builds nothing, so an rc that changes how images are built, deployed or released says in its release PR that those jobs are proven only by the first repository with a stamp. A failed rc is fixed by a new PR and the next rc, never a moved tag.
 4. **An image:** the tag starts its build workflow, which refuses a version already pushed. Report the image's digest from that run; templates pin it by digest.
 5. Print the exact commands for an organization owner, an annotated tag pushed alone:
 

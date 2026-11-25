@@ -1,0 +1,184 @@
+name: Dependency Audit
+
+# Reusable. Audits a repository's dependencies against the known advisories,
+# so a new advisory shows up within a day instead of breaking some unrelated
+# PR's build. A repository's audit.yml calls it on a schedule:
+#
+#   on:
+#     schedule:
+#       - cron: "17 5 * * *"
+#     workflow_dispatch:
+#   permissions: {}
+#   jobs:
+#     audit:
+#       permissions:
+#         contents: read
+#         packages: read
+#       uses: TrislabCompany/tl-platform/.github/workflows/dependency-audit.yml@<sha> # app-workflows/vX.Y.Z
+#       secrets:
+#         packages-token: ${{ secrets.PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
+#     main-failure-issue:
+#       needs: [audit]
+#       if: always()
+#       permissions: { actions: read, issues: write, pull-requests: read }
+#       uses: TrislabCompany/tl-platform/.github/workflows/main-failure-issue.yml@<sha> # app-workflows/vX.Y.Z
+#       with:
+#         result: ${{ needs.audit.result }}
+#         check: dependency-audit
+#
+# What it audits:
+#   - .NET: every solution (*.slnx, *.sln) when global.json exists, with
+#     `dotnet list package --vulnerable --include-transitive` after a restore;
+#   - npm: every folder with a package-lock.json (`npm audit`), and pnpm:
+#     every folder with a pnpm-lock.yaml (`pnpm audit`).
+#
+# Fails on an advisory of moderate severity or higher that isn't accepted in
+# .audit-accepted at the repository root: one advisory URL or GHSA id per line,
+# each with a line "# reason: <text>; expires: YYYY-MM-DD" above it, as in
+# .trivyignore. An expired or unexplained entry fails too. Every finding goes
+# to the job summary. Pushes nothing and signs in nowhere.
+
+on:
+  workflow_call:
+    secrets:
+      packages-token:
+        description: A token with read:packages, for a repository that restores packages from GitHub Packages
+        required: false
+
+permissions: {}
+
+jobs:
+  audit:
+    name: audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check .audit-accepted
+        id: accepted
+        run: |
+          list="$RUNNER_TEMP/accepted.txt"
+          : > "$list"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          [ -f .audit-accepted ] || exit 0
+          awk -v today="$(date -u +%F)" -v out="$list" '
+            /^[[:space:]]*$/ { above = ""; next }
+            /^[[:space:]]*#/ { above = $0; next }
+            {
+              if (above ~ /^# reason: .+; expires: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) {
+                expires = substr(above, length(above) - 9)
+                if (expires < today) { printf "::error file=.audit-accepted,line=%d::%s expired on %s\n", NR, $1, expires; bad = 1 }
+                else { print $1 > out }
+              } else {
+                printf "::error file=.audit-accepted,line=%d::%s has no line \"# reason: <text>; expires: YYYY-MM-DD\" above it\n", NR, $1; bad = 1
+              }
+              above = ""
+            }
+            END { exit bad }
+          ' .audit-accepted
+
+      - name: Find the runtimes
+        id: runtimes
+        run: |
+          {
+            echo "dotnet=$([ -f global.json ] && echo true || echo false)"
+            echo "npm_dirs=$(find . -path ./.git -prune -o -name node_modules -prune -o -name package-lock.json -printf '%h ')"
+            echo "pnpm_dirs=$(find . -path ./.git -prune -o -name node_modules -prune -o -name pnpm-lock.yaml -printf '%h ')"
+          } >> "$GITHUB_OUTPUT"
+
+      - if: steps.runtimes.outputs.dotnet == 'true'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - if: steps.runtimes.outputs.npm_dirs != '' || steps.runtimes.outputs.pnpm_dirs != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      # Each finding becomes one line: severity <tab> advisory <tab> package <tab> where.
+      - name: Audit
+        env:
+          PACKAGES_TOKEN: ${{ secrets.packages-token }}
+          DOTNET: ${{ steps.runtimes.outputs.dotnet }}
+          NPM_DIRS: ${{ steps.runtimes.outputs.npm_dirs }}
+          PNPM_DIRS: ${{ steps.runtimes.outputs.pnpm_dirs }}
+          ACCEPTED: ${{ steps.accepted.outputs.list }}
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: 0
+        run: |
+          set -euo pipefail
+          findings="$RUNNER_TEMP/findings.tsv"
+          : > "$findings"
+
+          if [ "$DOTNET" = true ]; then
+            while IFS= read -r solution; do
+              echo "::group::dotnet $solution"
+              dotnet restore "$solution"
+              dotnet list "$solution" package --vulnerable --include-transitive --format json > "$RUNNER_TEMP/nuget.json"
+              jq -r --arg where "$solution" '
+                .projects[]? | .path as $p | .frameworks[]? | (.topLevelPackages[]?, .transitivePackages[]?)
+                | . as $pkg | .vulnerabilities[]?
+                | [(.severity | ascii_downcase), .advisoryurl, "\($pkg.id) \($pkg.resolvedVersion)", $where] | @tsv
+              ' "$RUNNER_TEMP/nuget.json" >> "$findings"
+              echo "::endgroup::"
+            done < <(find . -path ./.git -prune -o \( -name '*.slnx' -o -name '*.sln' \) -print)
+          fi
+
+          for dir in $NPM_DIRS; do
+            echo "::group::npm audit $dir"
+            (cd "$dir" && npm audit --json > "$RUNNER_TEMP/npm.json") || true
+            jq -r --arg where "$dir" '
+              .vulnerabilities // {} | to_entries[] | .key as $name | .value.via[]?
+              | select(type == "object")
+              | [.severity, .url, "\($name) \(.range)", $where] | @tsv
+            ' "$RUNNER_TEMP/npm.json" >> "$findings"
+            echo "::endgroup::"
+          done
+
+          for dir in $PNPM_DIRS; do
+            echo "::group::pnpm audit $dir"
+            pm=$(jq -r '.packageManager // empty' "$dir/package.json")
+            corepack enable
+            [ -n "$pm" ] && corepack install --global "$pm"
+            (cd "$dir" && pnpm audit --json > "$RUNNER_TEMP/pnpm.json") || true
+            jq -r --arg where "$dir" '
+              .advisories // {} | to_entries[] | .value
+              | [.severity, .url, "\(.module_name) \(.vulnerable_versions)", $where] | @tsv
+            ' "$RUNNER_TEMP/pnpm.json" >> "$findings"
+            echo "::endgroup::"
+          done
+
+          sort -u -o "$findings" "$findings"
+          {
+            echo "### Dependency audit"
+            echo
+            if [ -s "$findings" ]; then
+              echo "| Severity | Advisory | Package | Where |"
+              echo "|---|---|---|---|"
+              awk -F'\t' '{ printf "| %s | %s | %s | %s |\n", $1, $2, $3, $4 }' "$findings"
+            else
+              echo "No known advisories."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          bad=0
+          while IFS=$'\t' read -r severity advisory package where; do
+            case "$severity" in moderate|high|critical) ;; *) continue ;; esac
+            id="${advisory##*/}"
+            if grep -qxF -e "$advisory" -e "$id" "$ACCEPTED"; then
+              echo "::notice::$severity $id in $package ($where) is accepted in .audit-accepted"
+              continue
+            fi
+            echo "::error::$severity $id in $package ($where): update it, or accept it in .audit-accepted with a reason and an expiry date"
+            bad=1
+          done < "$findings"
+          exit "$bad"

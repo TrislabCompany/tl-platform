@@ -1,0 +1,126 @@
+name: Main Failure Issue
+
+# Reusable. Keeps one GitHub issue per failing check on main, so a red main is
+# never left alone after a merge. A repository's ci.yml calls it in a job after
+# its check, on a push to main only:
+#
+#   main-failure-issue:
+#     needs: [ci]
+#     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+#     permissions:
+#       actions: read
+#       issues: write
+#       pull-requests: read
+#     uses: TrislabCompany/tl-platform/.github/workflows/main-failure-issue.yml@<sha> # app-workflows/vX.Y.Z
+#     with:
+#       result: ${{ needs.ci.result }}
+#
+# On a failure it opens the issue "main is failing: <check>", labelled ci-main,
+# or comments on the one already open. The issue names the run, the failed
+# jobs, the merged PR, and assigns the PR's author (or its last approver when
+# a bot opened it). On the next success it closes the issue. A cancelled or
+# skipped check changes nothing. The same pattern as the drift issues of
+# tl-cloud-infrastructure's nightly drift check.
+
+on:
+  workflow_call:
+    inputs:
+      result:
+        description: The checked job's result, needs.<job>.result (success, failure, cancelled or skipped)
+        type: string
+        required: true
+      check:
+        description: The name of the check, used in the issue title
+        type: string
+        required: false
+        default: ci / ci
+      dry-run:
+        description: Print what would be done without opening, commenting on or closing an issue
+        type: boolean
+        required: false
+        default: false
+
+permissions: {}
+
+jobs:
+  issue:
+    name: issue
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      issues: write
+      pull-requests: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULT: ${{ inputs.result }}
+          CHECK: ${{ inputs.check }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          title="main is failing: $CHECK"
+          run() { if [ "$DRY_RUN" = true ]; then echo "dry run: $*"; else "$@"; fi; }
+
+          # shellcheck disable=SC2016 # $t is a jq variable
+          open=$(gh issue list --repo "$REPO" --state open --label ci-main --json number,title --limit 100 |
+            jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty')
+
+          case "$RESULT" in
+            success)
+              if [ -n "$open" ]; then
+                run gh issue close "$open" --repo "$REPO" --comment "main is green again at $SHA: $RUN_URL"
+                echo "Closed #$open"
+              else
+                echo "main is green and no issue is open"
+              fi
+              ;;
+            failure)
+              pr=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0] // {}')
+              number=$(jq -r '.number // empty' <<< "$pr")
+              author=$(jq -r '.user.login // empty' <<< "$pr")
+              author_type=$(jq -r '.user.type // empty' <<< "$pr")
+              assignee=$author
+              if [ -n "$number" ] && { [ "$author_type" = Bot ] || [[ $author == *"[bot]" ]]; }; then
+                assignee=$(gh api "repos/$REPO/pulls/$number/reviews" --jq '[.[] | select(.state == "APPROVED")] | last | .user.login // empty')
+              fi
+              jobs=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --jq '.jobs[] | select(.conclusion == "failure") | "- \(.name): \(.html_url)"')
+              body="$RUNNER_TEMP/body.md"
+              {
+                echo "The check \`$CHECK\` failed on \`main\` at $SHA."
+                echo
+                echo "- Run: $RUN_URL"
+                if [ -n "$number" ]; then echo "- Merged PR: #$number"; fi
+                echo
+                echo "Failed jobs:"
+                echo
+                echo "${jobs:-- (none reported yet; see the run)}"
+                echo
+                echo "Fix it in the next PR. This issue closes itself when \`$CHECK\` passes on main again."
+              } > "$body"
+              if [ -n "$open" ]; then
+                run gh issue comment "$open" --repo "$REPO" --body-file "$body"
+                echo "Commented on #$open"
+              else
+                run gh label create ci-main --repo "$REPO" --color B60205 --description "The check on main is failing" --force
+                assign=()
+                [ -n "$assignee" ] && assign=(--assignee "$assignee")
+                if ! run gh issue create --repo "$REPO" --title "$title" --label ci-main "${assign[@]}" --body-file "$body"; then
+                  echo "::warning::Could not assign $assignee, so the issue is opened unassigned"
+                  run gh issue create --repo "$REPO" --title "$title" --label ci-main --body-file "$body"
+                fi
+              fi
+              echo "::notice::$CHECK failed on main; the ci-main issue tracks it"
+              ;;
+            *)
+              echo "::notice::$CHECK was $RESULT, so the issue is left as it is"
+              ;;
+          esac

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "The Trislab default for every repository: weekly grouped updates, digests pinned, security fixes at once. Every update is put on auto-merge, which merges it once a person approves it and the required checks pass. Auto-merge stays on for minor and major updates only until the first product is in production (tl-product-ideas D-40).",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommitsDisabled",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Ljubljana",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 10,
+  "minimumReleaseAge": "3 days",
+  "automerge": true,
+  "platformAutomerge": true,
+  "automergeType": "pr",
+  "labels": ["dependencies"],
+  "vulnerabilityAlerts": {
+    "schedule": ["at any time"],
+    "minimumReleaseAge": null,
+    "labels": ["dependencies", "security"]
+  },
+  "packageRules": [
+    {
+      "description": "The .NET SDK in global.json and the .NET images move together.",
+      "matchPackageNames": ["dotnet-sdk", "mcr.microsoft.com/dotnet/**"],
+      "groupName": ".NET"
+    },
+    {
+      "description": "Node in images and engines.",
+      "matchPackageNames": ["node", "@types/node"],
+      "groupName": "Node"
+    },
+    {
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
+      "groupName": "React"
+    },
+    {
+      "matchPackageNames": ["vite", "@vitejs/**", "vitest", "@vitest/**"],
+      "groupName": "Vite and Vitest"
+    },
+    {
+      "matchPackageNames": ["@playwright/**", "playwright", "playwright-core"],
+      "groupName": "Playwright"
+    },
+    {
+      "matchPackageNames": ["Microsoft.EntityFrameworkCore**", "Npgsql**"],
+      "groupName": "EF Core and Npgsql"
+    },
+    {
+      "description": "GitHub Actions, pinned by digest, in one PR.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["!TrislabCompany/tl-platform"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "The reusable app workflows, pinned by their tag app-workflows/vX.Y.Z. Renovate never bumps a major: that bump PR makes the caller changes (tl-platform AGENTS.md).",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["TrislabCompany/tl-platform"],
+      "versioning": "regex:^app-workflows/v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$",
+      "pinDigests": false,
+      "groupName": "app-workflows"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["TrislabCompany/tl-platform"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}

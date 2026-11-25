@@ -36,6 +36,7 @@ The same block starts the `AGENTS.md` of every Trislab repository, so an agent i
 | `blocks/<block>/` | Building blocks the stamp templates use by relative path | Not on their own: with the template that uses them |
 | `.github/workflows/app-*.yml` | The reusable app workflows `app-ci.yml`, `app-deploy.yml`, `app-release.yml`, `app-promote.yml` (spec 13 section 9) | `app-workflows/vX.Y.Z`, tested first as `app-workflows/vX.Y.Z-rc.<n>` |
 | `images/<image>/` | The platform's own container images, such as `platform-placeholder`; built by their workflow on a tag | `<image>/vX.Y.Z` |
+| `renovate/default.json` | The Renovate preset every Trislab repository extends (`github>TrislabCompany/tl-platform//renovate/default`): weekly grouped updates, digests pinned, security updates at once, auto-merge once a person approves | Read from `main` by Renovate |
 | `.github/workflows/check.yml` | The required check `check` on every PR | Not released |
 | `.claude/rules/` | The coding rules, loaded by path (below) | Not released |
 | `.agents/skills/`, `.claude/` | The skills below, their Claude Code pointers, and `.claude/settings.json`, which denies creating or pushing tags, `tofu apply` and signing in | Not released |
